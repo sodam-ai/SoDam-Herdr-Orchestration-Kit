@@ -1,0 +1,6 @@
+.omc/
+.remember/
+.claude/
+node_modules/
+*.log
+.sodam-re/

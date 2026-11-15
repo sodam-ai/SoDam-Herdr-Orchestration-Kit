@@ -1,0 +1,14 @@
+{
+  "id": "approve",
+  "kind": "script",
+  "entry": "approve.ps1",
+  "risk": "high",
+  "default": "off",
+  "needs": ["hc (on PATH)", "Windows PowerShell 5.1", "HC_TERMINAL_ID (this window's address)", "screen text: 1. Yes, Do you want to, Esc to cancel, box border"],
+  "checks": ["hc-on-path", "powershell-5.1", "self-address-known", "approval-prompt-text-readable"],
+  "data": { "config": [], "state": [], "logs": ["approve-log.txt"] },
+  "settings": {
+    "HC_TERMINAL_ID": { "default": "", "note": "required; the script stops with an error when it is missing" },
+    "ORCH_HOME": { "default": "%LOCALAPPDATA%/Herdr-Orchestration" }
+  }
+}

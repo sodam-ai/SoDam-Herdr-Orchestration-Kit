@@ -1,0 +1,14 @@
+{
+  "id": "pending",
+  "kind": "script",
+  "entry": "pending.ps1",
+  "risk": "low",
+  "default": "on",
+  "needs": ["hc (on PATH)", "Windows PowerShell 5.1"],
+  "checks": ["hc-on-path", "powershell-5.1"],
+  "data": { "config": ["ignore.txt"], "state": [], "logs": [] },
+  "settings": {
+    "HC_TERMINAL_ID": { "default": "", "note": "optional; without it the own window cannot be excluded (a warning is printed)" },
+    "ORCH_HOME": { "default": "%LOCALAPPDATA%/Herdr-Orchestration" }
+  }
+}
