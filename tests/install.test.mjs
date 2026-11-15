@@ -74,7 +74,7 @@ const sameTree = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k
 const diffKeys = (a, b) => [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).sort();
 
 // 번들 복사본 (설치 도구의 원본 역할). install.ps1 은 자기 위치의 부모를 번들로 본다.
-const BUNDLE_DIRS = ['roles', 'templates', 'schema', 'bin', 'lib', 'functions'];
+const BUNDLE_DIRS = ['roles', 'templates', 'schema', 'bin', 'lib', 'functions', 'herdr-mod'];
 function makeBundle(name) {
   const b = dirOf(name);
   for (const d of BUNDLE_DIRS) cpSync(join(ROOT, d), join(b, d), { recursive: true });
@@ -972,7 +972,7 @@ check('(15k) UTF-8 이 아닌 입력 파일(메모장 ANSI 저장 등)은 깨진
 
 // ⑨ 개인 정보
 check('(9) 설치 산출물에 사용자 폴더 절대경로·이메일이 없음', () => {
-  const files = ['install.ps1', 'uninstall.ps1', 'sync.mjs', 'sync-lib.mjs', 'init-config.mjs', 'manage.mjs', 'manage-lib.mjs', 'manage-live.mjs', 'orch-manager.ps1', 'Herdr-Orchestration-Manager.vbs'];
+  const files = ['install.ps1', 'uninstall.ps1', 'sync.mjs', 'sync-lib.mjs', 'init-config.mjs', 'manage.mjs', 'manage-lib.mjs', 'manage-live.mjs', 'orch-manager.ps1', 'Herdr-Orchestration-Manager.vbs', 'install-herdr-mod.ps1', 'herdr-keys.mjs', '../herdr-mod/orch-manager/main.js', '../herdr-mod/orch-manager/model.js', '../herdr-mod/orch-manager/ui.js', '../herdr-mod/orch-manager/tabs.js', '../herdr-mod/orch-manager/mod.json'];
   const bad = [];
   for (const f of files) {
     const t = read(join(ROOT, 'bin', f));
@@ -996,7 +996,7 @@ check('(10b) 관리 창 실행기(.vbs)는 ASCII 만이고 CRLF 이며 같은 �
 
 // ⑩ .ps1 형식
 check('(10) .ps1 은 PowerShell 5.1 파싱 오류 0건, 한글이 있으면 UTF-8 BOM + CRLF (ASCII 면 그대로)', () => {
-  const targets = ['install.ps1', 'uninstall.ps1', 'orch-manager.ps1'].map((f) => join(ROOT, 'bin', f));
+  const targets = ['install.ps1', 'uninstall.ps1', 'orch-manager.ps1', 'install-herdr-mod.ps1'].map((f) => join(ROOT, 'bin', f));
   const expr = targets.map((t) => `$e=$null;$tk=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('${t.replace(/'/g, "''")}',[ref]$tk,[ref]$e);'ERR=' + @($e).Count + ' ' + '${t.replace(/'/g, "''")}'`).join(';');
   const r = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', expr], { encoding: 'utf8', env: envFor() });
   const lines = (r.stdout ?? '').split(/\r?\n/).filter((l) => l.startsWith('ERR='));

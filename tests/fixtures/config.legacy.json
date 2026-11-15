@@ -1,6 +1,6 @@
 {
-  "commander": "t9m",
+  "commander": "t9x",
   "control_dir": "<CONTROL_DIR>",
-  "projects_root": "<PROJECTS_ROOT>",
-  "scope_prefix": "My-Space-1 /"
+  "projects_root": "<PROJECTS_ROOT>/",
+  "scope_prefix": "My-Space /"
 }

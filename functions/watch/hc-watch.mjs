@@ -50,7 +50,7 @@ function compactKilled() {
 const IGNORE_FILE = path.join(orchPaths.config, 'ignore.txt');
 const ignoredAddrs = new Set();
 // WATCH_ONLY (2026-11-10, cost cut): when set, ONLY sessions whose "where" label starts with this text are watched
-// (alerts AND auto-/compact). Everything else is treated like ignore.txt. Example: WATCH_ONLY="My-Space-1 /".
+// (alerts AND auto-/compact). Everything else is treated like ignore.txt. Example: WATCH_ONLY="My-Space /".
 // Unset/empty = old behaviour (watch everything except ignore.txt).
 const WATCH_ONLY = String(process.env.WATCH_ONLY ?? '').trim();
 function loadIgnore() {

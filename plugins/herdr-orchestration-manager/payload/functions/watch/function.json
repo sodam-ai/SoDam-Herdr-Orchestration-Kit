@@ -1,0 +1,27 @@
+{
+  "id": "watch",
+  "kind": "watcher",
+  "entry": "hc-watch.mjs",
+  "risk": "medium",
+  "default": "on",
+  "parts": [
+    { "id": "alerts", "risk": "medium", "default": "on", "note": "reads only" },
+    { "id": "auto-compact", "risk": "high", "default": "off", "note": "types /compact into other sessions; needs ORCH_AUTOCOMPACT=1 and a non-empty WATCH_ONLY" }
+  ],
+  "needs": ["hc (on PATH, or HC_BIN)", "Node.js 18+", "HC_SELF or HC_TERMINAL_ID", "status bar text 'context N%' (auto-compact only)", "screen text: prompt arrow, Esc to cancel, Do you want"],
+  "checks": ["hc-on-path", "node-version", "self-address-known", "status-bar-context-percent", "allow-list-set (WATCH_ONLY)"],
+  "data": { "config": ["ignore.txt", "compact.off"], "state": [], "logs": [] },
+  "settings": {
+    "HC_BIN": { "default": "hc", "note": "path of the hc program" },
+    "HC_SELF": { "default": "", "note": "this window's address (falls back to HC_TERMINAL_ID); required" },
+    "ORCH_AUTOCOMPACT": { "default": "0", "note": "1 = allow auto /compact (also needs WATCH_ONLY)" },
+    "WATCH_ONLY": { "default": "", "note": "allow list: only windows whose label starts with this text are watched" },
+    "CTX_PCT": { "default": 57, "note": "compact threshold in percent, never below 57" },
+    "CTRL_PCT": { "default": 70, "note": "threshold for control-tower windows and this controller, never below 65" },
+    "COMPACT_COOLDOWN_MS": { "default": 1200000, "note": "minimum gap between two compacts of one window" },
+    "CTRL_COOLDOWN_MS": { "default": 3600000, "note": "same, for control-tower windows" },
+    "ORCH_CTRL_MATCH": { "default": "Control-Tower", "note": "name fragment that marks control-tower windows (CTRL_MATCH still works)" },
+    "BLOCK_MS": { "default": 300000 }, "DONE_MS": { "default": 60000 }, "ERROR_MS": { "default": 5000 },
+    "FLUSH_MS": { "default": 60000 }, "CTX_SCAN_MS": { "default": 45000 }, "DRY_RUN": { "default": "0" }
+  }
+}

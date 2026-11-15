@@ -1,0 +1,19 @@
+{
+  "id": "autopress",
+  "kind": "script",
+  "entry": "autopress.ps1",
+  "risk": "high",
+  "default": "off",
+  "needs": ["hc (on PATH)", "Windows PowerShell 5.1", "ORCH_TOOL_DIR (for file-edit and Monitor auto-approval)", "screen text: 1. Yes, Do you want to, Esc to cancel, box border, window border title"],
+  "checks": ["hc-on-path", "powershell-5.1", "tool-dir-set", "target-window-found", "approval-prompt-text-readable"],
+  "data": { "config": ["autopress-allow.txt"], "state": [], "logs": ["autopress.log"] },
+  "settings": {
+    "ORCH_ENABLE_AUTOPRESS": { "default": "0", "note": "must be 1, otherwise the script prints that it is off and exits" },
+    "ORCH_TOOL_DIR": { "default": "", "note": "the BUNDLE ROOT (the folder holding functions/, roles/, bin/, lib/; installed copy: <ORCH_HOME>/app). Only this form is accepted. Used only for the Monitor run shape (<root>/functions/watch/hc-watch.mjs) and the pending.ps1 command form; files inside it are never auto-approved for editing. Unset or any other folder = Monitor/pending forms stay manual" },
+    "ORCH_DOCS_DIR": { "default": "<ORCH_HOME>/state/docs", "note": "the ONLY folder where file edits may be auto-approved (documents). Default is used only if the folder exists; unset+missing = off. Must not contain/sit inside/equal ORCH_TOOL_DIR or the config folder (start refused)" },
+    "autopress-allow.txt": { "default": "(file absent)", "note": "config\\ file: extra allowed command forms, one anchored regex (^...$) per line, # comments; only adds to the built-in list" },
+    "ORCH_PROXY_TARGET": { "default": "CT-CC-(0|Master)", "note": "regex of the target window name" },
+    "ORCH_PROXY_TITLE": { "default": "Herdr-<ORCH_PROXY_TARGET>", "note": "regex of the target's border title" },
+    "HC_TERMINAL_ID": { "default": "", "note": "this window; never targeted" }
+  }
+}
