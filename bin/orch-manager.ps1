@@ -78,6 +78,9 @@ $ColOk = [System.Drawing.Color]::FromArgb(0, 120, 60); $ColWarn = [System.Drawin
 $ColBad = [System.Drawing.Color]::FromArgb(190, 30, 30); $ColDim = [System.Drawing.Color]::Gray
 function Fmt-Time($v) { try { return ([datetime]$v).ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss') } catch { return [string]$v } }
 function On-Text($v) { if ($v -eq $true) { return '켜짐' } elseif ($v -eq $false) { return '꺼짐' } else { return '-' } }
+$script:ChoiceLabel = @{ 'read-only' = '읽기 전용'; 'scoped-write' = '범위 내 쓰기'; 'on-request' = '요청 시'; 'periodic' = '주기적' }
+function Choice-Disp([string]$v) { if ($script:ChoiceLabel.ContainsKey($v)) { $script:ChoiceLabel[$v] + ' (' + $v + ')' } else { $v } }
+function Choice-Val([object]$d) { $s = [string]$d; if ($s -match '(([^()]+))s*$') { $Matches[1] } else { $s } }
 function Source-Text([string]$s) { switch ($s) { 'bundle' { '번들' } 'override' { '내가 덮어씀' } 'user' { '내가 만듦' } default { $s } } }
 
 # ---------------------------------------------------------------- 상태 저장(창 편의용: 마지막 sync 출력 폴더)
@@ -141,9 +144,9 @@ $chkOn = New-Ctl 'CheckBox' @{ Text = '켜짐'; AutoSize = $true; Location = (Pt
 $lblSum = New-Ctl 'Label' @{ Text = '하는 일'; AutoSize = $true; Location = (Pt 10 94) }
 $txtSum = New-Ctl 'TextBox' @{ Location = (Pt 100 90); Size = (Sz 490 26); Anchor = 'Top,Left,Right' }
 $lblMode = New-Ctl 'Label' @{ Text = '모드'; AutoSize = $true; Location = (Pt 10 130) }
-$cmbMode = New-Ctl 'ComboBox' @{ Location = (Pt 100 126); Size = (Sz 140 26); DropDownStyle = 'DropDownList' }; [void]$cmbMode.Items.AddRange(@('read-only', 'scoped-write'))
-$lblCad = New-Ctl 'Label' @{ Text = '주기'; AutoSize = $true; Location = (Pt 260 130) }
-$cmbCad = New-Ctl 'ComboBox' @{ Location = (Pt 300 126); Size = (Sz 130 26); DropDownStyle = 'DropDownList' }; [void]$cmbCad.Items.AddRange(@('on-request', 'periodic'))
+$cmbMode = New-Ctl 'ComboBox' @{ Location = (Pt 100 126); Size = (Sz 200 26); DropDownStyle = 'DropDownList' }; [void]$cmbMode.Items.AddRange(@((Choice-Disp 'read-only'), (Choice-Disp 'scoped-write')))
+$lblCad = New-Ctl 'Label' @{ Text = '주기'; AutoSize = $true; Location = (Pt 320 130) }
+$cmbCad = New-Ctl 'ComboBox' @{ Location = (Pt 360 126); Size = (Sz 170 26); DropDownStyle = 'DropDownList' }; [void]$cmbCad.Items.AddRange(@((Choice-Disp 'on-request'), (Choice-Disp 'periodic')))
 $lblRep = New-Ctl 'Label' @{ Text = '보고 대상'; AutoSize = $true; Location = (Pt 10 166) }
 $cmbRep = New-Ctl 'ComboBox' @{ Location = (Pt 100 162); Size = (Sz 200 26); DropDownStyle = 'DropDownList' }
 $lblWr = New-Ctl 'Label' @{ Text = '쓸 수 있는 곳 (한 줄에 하나, 읽기 전용 모드면 비움)'; AutoSize = $true; Location = (Pt 10 198) }
@@ -297,7 +300,7 @@ function Load-RoleToForm {
     $ov = ''; if ($r.source -eq 'override') { $ov = ' - 내가 덮어쓴 항목: ' + (@($r.overridden) -join ', ') }
     $edInfo.Text = ('역할 ' + $id + ' (' + (Source-Text $r.source) + ')' + $ov)
     $txtName.Text = [string]$m.name; $txtSum.Text = [string]$m.summary; $numSlot.Value = [int]$m.slot; $chkOn.Checked = ($m.enabled -eq $true)
-    $cmbMode.SelectedItem = [string]$m.mode; $cmbCad.SelectedItem = [string]$m.cadence; $cmbRep.SelectedItem = [string]$m.reports_to
+    $cmbMode.SelectedItem = (Choice-Disp ([string]$m.mode)); $cmbCad.SelectedItem = (Choice-Disp ([string]$m.cadence)); $cmbRep.SelectedItem = [string]$m.reports_to
     $txtWr.Text = (@($m.writes_to) -join "`r`n"); $txtBody.Text = ([string]$r.body -replace "`r?`n", "`r`n")
     $isBundleKind = ($m.kind -ne 'worker')
     $btnRevert.Enabled = ($r.source -eq 'override'); $btnDel.Enabled = ($r.source -eq 'user')
@@ -316,8 +319,8 @@ function Save-Role {
     if ($txtSum.Text -ne [string]$m.summary) { if ($txtSum.Text.Trim() -eq '') { Say-Box '"하는 일"은 비울 수 없습니다.' '확인' 'Warning'; return }; $f.summary = $txtSum.Text }
     if ([int]$numSlot.Value -ne [int]$m.slot) { $f.slot = [int]$numSlot.Value }
     if ($chkOn.Checked -ne ($m.enabled -eq $true)) { $f.enabled = [bool]$chkOn.Checked }
-    if ([string]$cmbMode.SelectedItem -ne [string]$m.mode) { $f.mode = [string]$cmbMode.SelectedItem }
-    if ([string]$cmbCad.SelectedItem -ne [string]$m.cadence) { $f.cadence = [string]$cmbCad.SelectedItem }
+    if ((Choice-Val $cmbMode.SelectedItem) -ne [string]$m.mode) { $f.mode = (Choice-Val $cmbMode.SelectedItem) }
+    if ((Choice-Val $cmbCad.SelectedItem) -ne [string]$m.cadence) { $f.cadence = (Choice-Val $cmbCad.SelectedItem) }
     if ([string]$cmbRep.SelectedItem -ne [string]$m.reports_to -and $cmbRep.SelectedItem) { $f.reports_to = [string]$cmbRep.SelectedItem }
     $wr = @($txtWr.Text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
     if ((($wr -join "`n")) -ne ((@($m.writes_to)) -join "`n")) { $f.writes_to = @($wr) }

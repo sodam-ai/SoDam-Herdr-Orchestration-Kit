@@ -20,7 +20,7 @@ try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Bundle = Split-Path -Parent $Here
 function Say([string]$m) { Write-Host $m }
-$BundleItems = @('roles', 'templates', 'schema', 'bin', 'lib', 'functions')
+$BundleItems = @('roles', 'templates', 'schema', 'bin', 'lib', 'functions', 'herdr-mod')   # herdr-mod: 허더 안에서 여는 관리 창(모드). 설치는 bin\install-herdr-mod.ps1
 
 # ---------- 위치 정하기 ----------
 if (-not $OrchHome) { $OrchHome = $env:ORCH_HOME }

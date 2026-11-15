@@ -1,0 +1,15 @@
+{
+  "id": "queue",
+  "kind": "script",
+  "entry": "herdr-center.ps1",
+  "risk": "low",
+  "default": "on",
+  "needs": ["hc (on PATH)", "Windows PowerShell 5.1"],
+  "checks": ["hc-on-path", "powershell-5.1"],
+  "data": { "config": ["order.txt", "ignore.txt"], "state": ["served.log", "round.txt"], "logs": [] },
+  "settings": {
+    "HC_TERMINAL_ID": { "default": "", "note": "optional; this window is left out of the lists" },
+    "ORCH_CTRL_MATCH": { "default": "Control-Tower", "note": "name fragment of helper windows (only blocked/error count for them)" },
+    "ORCH_HOME": { "default": "%LOCALAPPDATA%/Herdr-Orchestration" }
+  }
+}

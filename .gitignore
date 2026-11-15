@@ -4,3 +4,17 @@
 node_modules/
 *.log
 .sodam-re/
+
+# 비밀 정보가 실수로 올라가지 않도록 (예방용)
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+credentials*.json
+service-account*.json
+
+# 개발 진행 기록(저장소에 올리지 않음)
+CHECKPOINT.md

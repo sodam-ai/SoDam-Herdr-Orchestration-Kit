@@ -199,19 +199,24 @@ export function readPackage(pkgDir) {
 // ---------- 불러오기/복구 계획 ----------
 // trust=false: 남의 묶음일 수 있음 → PC 설정은 건드리지 않고, 환경 규칙은 includeEnvRules 일 때만, 달라지는 역할은 꺼 둔 채로 들인다.
 // trust=true : 내 백업 복구 → 그대로.
+// 남의 묶음의 역할을 "꺼진 채"로 만든다. 파서(parseRoleFile)와 읽는 방식이 어긋나면 꺼지지 않은 채 들어올 수 있으므로(앞에 BOM 이 둘 이상이거나
+// `enabled : true` 처럼 쓴 경우 등), 다시 쓴 결과를 **실제 파서로 다시 읽어** enabled 가 false 인지 확인하고, 아니면 null 을 돌려줘 불러오기를 거절한다(안전 쪽으로 실패).
+const stripBoms = (t) => t.replace(/^\uFEFF+/, '');
 function forceDisabled(buf) {
-  const text = decodeStrict(buf).replace(/\r\n?/g, '\n');
+  const text = stripBoms(decodeStrict(buf)).replace(/\r\n?/g, '\n');
   const lines = text.split('\n');
   const end = lines.indexOf('---', 1);
-  if (lines[0] !== '---' || end < 0) return buf;                      // 머리말이 이상하면 그대로 두고 검증이 막는다
+  if (lines[0] !== '---' || end < 0) return null;                     // 머리말을 못 읽으면 꺼진 상태를 보장할 수 없으니 거절
   let done = false;
   for (let i = 1; i < end; i++) if (/^enabled:/.test(lines[i])) { lines[i] = 'enabled: false'; done = true; }
   if (!done) lines.splice(1, 0, 'enabled: false');
-  return Buffer.from(lines.join('\n'), 'utf8');
+  const out = Buffer.from(lines.join('\n'), 'utf8');
+  let p; try { p = parseRoleFile(decodeStrict(out)); } catch { return null; }
+  return p.meta && p.meta.enabled === false ? out : null;             // 실제 파서가 꺼진 것으로 읽을 때만 받는다
 }
 // 머리말의 한 줄만 바꾼다(없으면 첫 줄 뒤에 넣는다). 나머지 글자는 그대로.
 function setHeaderLine(buf, key, valueText) {
-  const lines = decodeStrict(buf).replace(/\r\n?/g, '\n').split('\n');
+  const lines = stripBoms(decodeStrict(buf)).replace(/\r\n?/g, '\n').split('\n');
   const end = lines.indexOf('---', 1);
   if (lines[0] !== '---' || end < 0) return buf;
   let done = false;
@@ -278,7 +283,10 @@ export function planImport(ctx, pkgDir, { mode = 'merge', trust = false, include
     let out = buf;
     if (!trust && rel.startsWith('config/roles/') && !enableImported) {
       const cur = mine.get(rel);
-      if (!cur || !cur.equals(buf)) out = forceDisabled(buf);       // 새로 들어오거나 내용이 달라지는 역할은 꺼 둔다(R1)
+      if (!cur || !cur.equals(buf)) {
+        out = forceDisabled(buf);                                    // 새로 들어오거나 내용이 달라지는 역할은 꺼 둔다(R1)
+        if (out === null) return fail([`역할 파일을 "꺼진 채"로 만들 수 없어 불러오지 않습니다(머리말 형식이 이상함): ${rel}`], { stage: 'validate', skipped });
+      }
     }
     incoming.set(rel, out);
   }
