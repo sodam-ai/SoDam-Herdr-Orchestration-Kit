@@ -354,6 +354,35 @@ await check('(I-18) 미리보기의 역할 줄: 켜짐 전/후와 "번들 덮어
   const p3 = planImport(dst, pk.dir, { enableImported: true }); ok(p3.ok && p3.changes.find((c) => c.path === 'config/roles/verifier.md').roleBefore === null, '덮어쓰기 파일이 지워진 상태의 이전 값');
 });
 
+await check('(I-19) 남의 묶음의 역할 파일이 BOM 여러 개·다른 표기로 파서와 읽는 방식을 어긋나게 해도 "꺼진 채" 규칙이 깨지지 않는다(거절되거나 꺼짐으로만 들어옴)', () => {
+  const src = mkHome(); roleNew(src, { id: 'evil-one' });
+  const pk = exportPackage(src, { dest: join(BASE, 'exp-i19'), scope: 'portable' }); ok(pk.ok, errs(pk));
+  const file = join(pk.dir, 'config', 'roles', 'evil-one.md'); const mf = join(pk.dir, 'package.json');
+  const orig = readFileSync(file); const text = orig.toString('utf8'); const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+  ok(/^enabled: true$/m.test(text), '시험 전제: 원본은 enabled: true');
+  const retarget = (buf) => { writeFileSync(file, buf); const m = JSON.parse(readFileSync(mf, 'utf8')); const e = m.files.find((x) => x.path === 'config/roles/evil-one.md'); e.sha256 = sha(buf); e.bytes = buf.length; writeFileSync(mf, JSON.stringify(m, null, 2)); };
+  const variants = {
+    '정상': orig,
+    'BOM 1개': Buffer.concat([BOM, orig]), 'BOM 2개': Buffer.concat([BOM, BOM, orig]), 'BOM 3개': Buffer.concat([BOM, BOM, BOM, orig]),
+    '키 뒤 공백(enabled : true)': Buffer.from(text.replace(/^enabled:/m, 'enabled :')),
+    '따옴표 키("enabled": true)': Buffer.from(text.replace(/^enabled:/m, '"enabled":')),
+    '중복 키(뒤쪽에 true)': Buffer.from(text.replace(/\n---\n/, '\n---\n').replace(/^(---\n[\s\S]*?)\n---\n/, '$1\nenabled: true\n---\n')),
+    'CR 단독 줄바꿈 + BOM 2개': Buffer.concat([BOM, BOM, Buffer.from(text.replace(/\r?\n/g, '\r'))]),
+  };
+  const seen = [];
+  for (const [name, buf] of Object.entries(variants)) {
+    retarget(buf);
+    const dst = mkHome(); const plan = planImport(dst, pk.dir, { mode: 'merge' });
+    if (!plan.ok) { seen.push(`${name}: 거절`); continue; }                                  // 거절은 안전한 결과
+    const ch = plan.changes.find((c) => c.path === 'config/roles/evil-one.md');
+    ok(ch && ch.role && ch.role.enabled === false, `${name}: 미리보기에서 꺼짐이 아님 → ${JSON.stringify(ch && ch.role)}`);
+    const ap = applyImport(dst, pk.dir, { mode: 'merge' }, { token: plan.token }); ok(ap.ok, `${name}: ${errs(ap)}`);
+    const r = roleList(dst).roles.find((x) => x.id === 'evil-one'); ok(r && r.meta.enabled === false, `${name}: 적용 뒤 실제 역할이 켜져 있음`);
+    seen.push(`${name}: 꺼짐`);
+  }
+  ok(seen.length === Object.keys(variants).length, '모든 변형을 확인하지 못함');
+});
+
 // ======================= 백업 · 복구 (B) =======================
 await check('(B-1) 백업: 전부 담기고 해시가 맞고 목록에 메모와 함께 보인다 / 설정이 비면 만들지 않는다', () => {
   const ctx = mkHome({ seed: true });
@@ -451,6 +480,47 @@ await check('(C-2) CLI 전체 흐름: 내보내기 → 다른 홈에서 불러�
   put(b, 'config/ignore.txt', '바뀜\n');
   const rp = cli('restore-plan', { pkg: bk.json.dir }, b.paths.home); ok(rp.code === 0 && !rp.json.noop, rp.out.slice(0, 200));
   const ra = cli('restore-apply', { pkg: bk.json.dir, token: rp.json.token }, b.paths.home); ok(ra.code === 0, ra.out.slice(0, 200));
+});
+// 허더 모드는 exec 에 표준입력을 줄 수 없어서 요청 값을 파일로 준다(--request-file). 같은 요청이면 표준입력과 결과가 같아야 한다.
+function cliFile(cmd, reqText, home, { stdin = '' } = {}) {
+  const f = join(BASE, `req-${Math.random().toString(36).slice(2)}.json`);
+  if (reqText !== null) writeFileSync(f, reqText);
+  const r = spawnSync(process.execPath, [join(ROOT, 'bin', 'manage.mjs'), cmd, '--request-file', reqText === null ? join(BASE, 'req-없음.json') : f], { input: stdin, encoding: 'utf8', env: { ...process.env, ORCH_HOME: home } });
+  let json = null; try { json = JSON.parse(r.stdout); } catch { /* 아래에서 */ }
+  return { code: r.status, json, out: `${r.stdout}${r.stderr}`, file: f };
+}
+await check('(C-3) --request-file: 표준입력 없이 파일로 요청(한글·BOM·큰 본문), 요청 파일은 읽기만 한다', () => {
+  const ctx = mkHome({ seed: true }); const h = ctx.paths.home;
+  const body = '# 시험 역할\n' + '- 한글 줄 ✔\n'.repeat(3000);                       // 약 40 KB: 명령줄로는 못 보내는 크기
+  const req = JSON.stringify({ id: 'verifier', fields: { name: '파일 요청 ✔' }, body });
+  const r = cliFile('role-set', '﻿' + req, h);                                     // BOM 이 붙은 UTF-8
+  ok(r.code === 0 && r.json.ok, r.out.slice(0, 300));
+  ok(read(ctx, 'config/roles/verifier.md').includes('파일 요청 ✔'), '파일로 준 값이 반영되지 않음');
+  eq(readFileSync(r.file, 'utf8'), '﻿' + req, '요청 파일이 바뀜(엔진은 읽기만 해야 함)');
+  const s1 = cli('status', {}, h); const s2 = cliFile('status', '{}', h); eq(JSON.stringify(s2.json), JSON.stringify(s1.json), '표준입력과 파일의 결과가 다름');
+  const ign = cliFile('status', '{}', h, { stdin: '{ 이 입력은 무시되어야 함' }); ok(ign.code === 0 && ign.json.ok, '--request-file 일 때 표준입력을 읽음');
+});
+await check('(C-4) --request-file 잘못된 사용: 파일 없음·폴더·깨진 JSON·너무 큰 파일·경로 누락은 깨끗이 거절(1), 스택 트레이스 없음', () => {
+  const ctx = mkHome({ seed: true }); const h = ctx.paths.home;
+  const miss = cliFile('status', null, h); ok(miss.code === 1 && miss.json.ok === false && !/\n\s+at /.test(miss.out), miss.out);
+  const bad = cliFile('status', '{ 깨진', h); ok(bad.code === 1 && bad.json.ok === false, bad.out);
+  const dir = spawnSync(process.execPath, [join(ROOT, 'bin', 'manage.mjs'), 'status', '--request-file', BASE], { encoding: 'utf8', env: { ...process.env, ORCH_HOME: h } });
+  ok(dir.status === 1 && /일반 파일이 아님/.test(dir.stdout), dir.stdout);
+  const big = cliFile('status', JSON.stringify({ x: 'a'.repeat(2 * 1024 * 1024 + 10) }), h); ok(big.code === 1 && /너무 큼/.test(big.out), big.out.slice(0, 200));
+  const nop = spawnSync(process.execPath, [join(ROOT, 'bin', 'manage.mjs'), 'status', '--request-file'], { encoding: 'utf8', env: { ...process.env, ORCH_HOME: h } });
+  ok(nop.status === 1 && /경로가 없음/.test(nop.stdout), nop.stdout);
+});
+await check('(C-5) --no-input: 표준입력이 열린 채 닫히지 않아도(허더 exec 가 그럴 수 있음) 멈추지 않고 조회가 끝난다', () => {
+  const ctx = mkHome({ seed: true }); const h = ctx.paths.home;
+  // 입력 파이프를 열어 둔 채(닫지 않음) 실행: --no-input 이 아니면 표준입력을 읽다가 멈춘다
+  const r = spawnSync(process.execPath, ['-e', `
+    const { spawn } = require('node:child_process');
+    const c = spawn(process.execPath, [${JSON.stringify(join(ROOT, 'bin', 'manage.mjs'))}, 'status', '--no-input'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ORCH_HOME: ${JSON.stringify(h)} } });
+    let out = ''; c.stdout.on('data', (d) => out += d);
+    const t = setTimeout(() => { console.log('HUNG'); c.kill(); process.exit(0); }, 20000);
+    c.on('close', (code) => { clearTimeout(t); console.log('CLOSED ' + code + ' ' + JSON.parse(out).ok); process.exit(0); });
+  `], { encoding: 'utf8', timeout: 60000 });
+  ok(/CLOSED 0 true/.test(r.stdout), `조회가 끝나지 않았거나 실패: ${r.stdout}${r.stderr}`.slice(0, 300));
 });
 await check('(U-1) 어디서나 실행: 공백·한글·괄호 경로에 실제 설치 → 설치된 사본의 엔진과 창이 저장소가 아니라 설치된 번들을 쓰고, 창이 열려 4개 탭을 그린다', () => {
   const PS = 'powershell.exe';

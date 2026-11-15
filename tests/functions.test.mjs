@@ -314,7 +314,7 @@ if (ACTIVE) {
     { id: 'S1b', what: 'Monitor `python evil.py hc-watch.mjs` (no risky token, wrong program)', screen: cmdPrompt('Monitor', ['python evil.py hc-watch.mjs']), orig: 'press', fixed: 'review' },
     { id: 'S1c', what: 'Monitor `node <tool>/watch/hc-watch.mjs && node evil.js` (right script + a chained extra command)', screen: cmdPrompt('Monitor', [`node ${fwd}/functions/watch/hc-watch.mjs && node evil.js`]), orig: 'press', fixed: 'review' },
     { id: 'S1d', what: 'Monitor `node <other folder>/watch/hc-watch.mjs` (look-alike script outside the tool folder)', screen: cmdPrompt('Monitor', [`node ${fwd}2/functions/watch/hc-watch.mjs`]), orig: 'press', fixed: 'review' },
-    { id: 'S1-ok1', what: 'LEGIT Monitor with env prefix + quoted script path', screen: cmdPrompt('Monitor', [`HC_SELF=t9m BLOCK_MS=600000 WATCH_ONLY="My-Space-1 /" node "${fwd}/functions/watch/hc-watch.mjs"`]), orig: 'press', fixed: 'press', legit: true },
+    { id: 'S1-ok1', what: 'LEGIT Monitor with env prefix + quoted script path', screen: cmdPrompt('Monitor', [`HC_SELF=t9x BLOCK_MS=600000 WATCH_ONLY="My-Space /" node "${fwd}/functions/watch/hc-watch.mjs"`]), orig: 'press', fixed: 'press', legit: true },
     { id: 'S1-ok2', what: 'LEGIT Monitor, plain `node <bundle root>\\functions\\watch\\hc-watch.mjs`', screen: cmdPrompt('Monitor', [`node ${BUNDLE6}\\functions\\watch\\hc-watch.mjs`]), orig: 'press', fixed: 'press', legit: true },
     // S2: file edit approved by "path starts with the folder text"
     F('S2a', 'Edit file `<base>\\..\\..\\..\\Windows\\evil.txt` (climbs out with ..)', (b) => `${b}\\..\\..\\..\\Windows\\evil.txt`, 'press', 'review'),
@@ -667,7 +667,7 @@ if (ACTIVE) {
     [`NODE_PATH=Z:\\x node "${W}"`, 'NODE_PATH'], [`ORCH_TOOL_DIR=Z:\\x node "${W}"`, 'ORCH_TOOL_DIR'], [`ORCH_DOCS_DIR=Z:\\x node "${W}"`, 'ORCH_DOCS_DIR'],
     [`LD_PRELOAD=x node "${W}"`, 'LD_PRELOAD'], [`DYLD_INSERT_LIBRARIES=x node "${W}"`, 'DYLD_INSERT_LIBRARIES'], [`hc_self=t1 node "${W}"`, 'wrong-case name'],
     [`HC_SELF=t1 HC_SELF=t2 node "${W}"`, 'duplicate HC_SELF'], [`BLOCK_MS=1 BLOCK_MS=2 node "${W}"`, 'duplicate BLOCK_MS'],
-    [`HC_SELF=t1;evil node "${W}"`, 'semicolon in a value'], [`HC_SELF=T1 node "${W}"`, 'HC_SELF not an address'], [`HC_SELF=t9m/x node "${W}"`, 'HC_SELF with a slash'],
+    [`HC_SELF=t1;evil node "${W}"`, 'semicolon in a value'], [`HC_SELF=T1 node "${W}"`, 'HC_SELF not an address'], [`HC_SELF=t9x/x node "${W}"`, 'HC_SELF with a slash'],
     [`WATCH_ONLY="a;b" node "${W}"`, 'semicolon inside WATCH_ONLY'], ['WATCH_ONLY="a$b" node "' + W + '"', 'dollar inside WATCH_ONLY'], ['WATCH_ONLY="a`b" node "' + W + '"', 'backtick inside WATCH_ONLY'],
     [`WATCH_ONLY="${'x'.repeat(100)}" node "${W}"`, 'WATCH_ONLY longer than the limit'],
     [`BLOCK_MS=abc node "${W}"`, 'BLOCK_MS not a number'], [`BLOCK_MS=1234567890 node "${W}"`, 'BLOCK_MS 10 digits'], [`DRY_RUN=2 node "${W}"`, 'DRY_RUN=2'], [`ORCH_AUTOCOMPACT=yes node "${W}"`, 'ORCH_AUTOCOMPACT=yes'],
@@ -681,8 +681,8 @@ if (ACTIVE) {
   attack.forEach((a, i) => rec(ra[i].v === 'review' && ra[i].presses.length === 0, `12 BYPASS -> review: ${a[1]}`, ra[i].v === 'review' ? '' : `got ${ra[i].v}: ${ra[i].out.slice(0, 100)}`));
 
   const good = [
-    [`HC_SELF=t9m BLOCK_MS=600000 DONE_MS=86400000 FLUSH_MS=600000 WATCH_ONLY="My-Space-1 /" node "${W}"`, 'the documented command'],
-    [`HC_SELF=t9m BLOCK_MS=600000 DONE_MS=86400000 FLUSH_MS=600000 WATCH_ONLY="My-Space-1 /" DRY_RUN=1 node "${W}"`, 'the documented command with DRY_RUN=1'],
+    [`HC_SELF=t9x BLOCK_MS=600000 DONE_MS=86400000 FLUSH_MS=600000 WATCH_ONLY="My-Space /" node "${W}"`, 'the documented command'],
+    [`HC_SELF=t9x BLOCK_MS=600000 DONE_MS=86400000 FLUSH_MS=600000 WATCH_ONLY="My-Space /" DRY_RUN=1 node "${W}"`, 'the documented command with DRY_RUN=1'],
     [`node "${W}"`, 'no env at all'], [`node ${W}`, 'unquoted script path'], [`HC_SELF=t7 node "${W}"`, 'HC_SELF only'],
     [`HC_SELF=t2 WATCH_ONLY="WS /" ORCH_AUTOCOMPACT=1 CTX_PCT=60 CTRL_PCT=75 CTX_SCAN_MS=45000 COMPACT_COOLDOWN_MS=1200000 CTRL_COOLDOWN_MS=3600000 ERROR_MS=5000 node "${W}"`, 'every allowed name once'],
     [`WATCH_ONLY='WS /' node "${W}"`, 'single-quoted WATCH_ONLY'], [`node.exe "${W}"`, 'node.exe'],

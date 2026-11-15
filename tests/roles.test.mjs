@@ -146,7 +146,7 @@ const HEADER_DIFFS = [
 ];
 const BODY_DIFFS = {
   'git-keeper': [{ no: 3, label: '깃 본문: 첫 문장(현재 상태) 삭제', from: '지금은 사용자 결정으로 푸시·PR·병합을 모두 보관 중이라 하지 않는다. ', to: '' }],
-  'doc-consistency': [{ no: 4, label: '문서 정합 감독관 본문: "(11-09 기준 Kakao)" 삭제', from: '(11-09 기준 Kakao)', to: '' }],
+  'doc-consistency': [{ no: 4, label: '문서 정합 감독관 본문: "(11-09 기준 프로젝트A)" 삭제', from: '(11-09 기준 프로젝트A)', to: '' }],
   // 부팅 읽기 시험(2026-11-14)이 찾은 결함 S1: 정본 이동 뒤에도 감사관 본문이 옛 역할표 3·4·6장을 가리켰다.
   // 번들은 다른 PC에서도 쓰므로 위치(폴더 이름)는 적지 않고, 위치는 이 PC 문서(총지휘-인수인계)가 알려 준다. {n:…} {name:…} 는 레거시 설정으로 렌더한 글자와 같아야 한다.
   'role-auditor': [
@@ -292,7 +292,7 @@ check('(iv) render-card 명령이 렌더 결과를 그대로 출력', () => {
 
 // (v) 개인 값 누출 없음 (fixture 만 예외)
 check('(v) roles·templates·schema·bin 에 개인 값(옛 주소·드라이브 경로·이메일)이 없음', () => {
-  const bad = [/\bt2n\b/, /[A-Za-z]:\\[A-Za-z_]/, /[A-Za-z]:\/[A-Za-z_]/, /[\w.+-]+@[\w-]+\.[\w.]+/, /My-Space-1/];
+  const bad = [/\bt2n\b/, /[A-Za-z]:\\[A-Za-z_]/, /[A-Za-z]:\/[A-Za-z_]/, /[\w.+-]+@[\w-]+\.[\w.]+/, /My-Space/];
   const hits = [];
   const walk = (dir) => {
     for (const f of readdirSync(dir)) {
@@ -387,7 +387,7 @@ ${ok.stderr}`);
 check('(vi-e) 호환: substitute 의 옛 호출 방식과 새 선택 인자, renderHeader/Body/Card 서명', () => {
   const r = byId('git-keeper');
   const vars = roleVars(r, roles, config);
-  eq(substitute('{n:verifier}|{name:verifier}|{role_number}|{commander}', vars), '3|검증관|8|t9m', 'roleVars 에 실린 목록으로 풀기');
+  eq(substitute('{n:verifier}|{name:verifier}|{role_number}|{commander}', vars), '3|검증관|8|t9x', 'roleVars 에 실린 목록으로 풀기');
   eq(substitute('{n:verifier}', { commander: 'x' }, roles), '3', '세 번째 인자로 목록을 주기');
   let threw = false;
   try { substitute('{n:verifier}', { commander: 'x' }); } catch (e) { threw = /역할 목록/.test(e.message); }
