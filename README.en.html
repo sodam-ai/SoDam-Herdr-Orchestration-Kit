@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoDam Herdr Orchestration Kit — Guide</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d2433;--muted:#5b6475;--line:#dcd8cf;--soft:#f1eee7;--accent:#1f5fbf;--code-bg:#eeeae0;--warn-bg:#fff4dc;--warn-line:#e0b04a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#14171d;--fg:#e6e8ee;--muted:#a3abbb;--line:#2e3441;--soft:#1c212a;--accent:#7fb0ff;--code-bg:#222834;--warn-bg:#2b2412;--warn-line:#8a6a1f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14171d;--fg:#e6e8ee;--muted:#a3abbb;--line:#2e3441;--soft:#1c212a;--accent:#7fb0ff;--code-bg:#222834;--warn-bg:#2b2412;--warn-line:#8a6a1f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.75 "Pretendard","Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;padding-block:32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:900px;margin:0 auto;min-width:0}
+h1{font-size:2rem;line-height:1.3;margin:.2em 0 .6em;text-wrap:balance}
+h2{font-size:1.45rem;margin:2.2em 0 .6em;padding-top:.6em;border-top:2px solid var(--line);text-wrap:balance}
+h3{font-size:1.15rem;margin:1.6em 0 .4em}
+p,li{overflow-wrap:anywhere}
+a{color:var(--accent)}
+ul,ol{padding-left:1.4em}
+li{margin:.35em 0}
+code{font:.9em/1.5 "Cascadia Mono",Consolas,"D2Coding",monospace;background:var(--code-bg);padding:.1em .35em;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;max-width:100%}
+pre code{background:none;padding:0;white-space:pre;overflow-wrap:normal}
+.tw{overflow-x:auto;max-width:100%;margin:1em 0}
+table{border-collapse:collapse;min-width:100%;font-size:.95rem}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--soft)}
+blockquote{margin:1em 0;padding:.4em 1em;background:var(--warn-bg);border-left:4px solid var(--warn-line);border-radius:4px}
+blockquote p{margin:.5em 0}
+details{border:1px solid var(--line);border-radius:8px;padding:.5em 1em;margin:.8em 0;background:var(--soft)}
+summary{cursor:pointer;padding:.3em 0}
+hr{border:0;border-top:1px solid var(--line);margin:2em 0}
+</style>
+</head>
+<body>
+<main>
+<h1>SoDam Herdr Orchestration Kit</h1>
+<p><a href="README.html">한국어</a> | <strong>English</strong> · Same content as web pages: <a href="README.html">README.html</a> · <a href="README.en.html">README.en.html</a></p>
+<p>A toolkit for people who run <strong>several AI windows (Claude Code) at once</strong>. It lets you define <strong>who does which job (a "role")</strong> in plain files, and then <strong>move those roles to another computer, edit them, back them up, and restore them</strong> safely.</p>
+<blockquote>
+<p><strong>Current status (please read first)</strong></p>
+<ul>
+<li>Version <code>0.1.0</code>. An early version under development.</li>
+<li>License: <strong>Apache License, Version 2.0</strong> · Rights holder: <strong>SoDam AI Studio</strong>. <strong>Commercial use is allowed</strong> when you meet the conditions. See <a href="#s18">Chapter 18</a>, <a href="LICENSE"><code>LICENSE</code></a>, <a href="NOTICE"><code>NOTICE</code></a> and <a href="LEGAL-GUIDE.md"><code>LEGAL-GUIDE.md</code></a> for the conditions and cautions.</li>
+<li><strong>Windows only</strong> (tested on Windows 11 only).</li>
+<li>By default this tool <strong>never sends text or keystrokes to any AI window.</strong> The features that do (approval proxy, auto-compact) are <strong>all switched off right after installation.</strong></li>
+<li>The on-screen text of the tool, the role documents and the generated cards are written in <strong>Korean</strong>. This English guide is a translation of the Korean guide.</li>
+</ul>
+</blockquote>
+<a id="s1"></a>
+<h2>1. Table of contents</h2>
+<ul>
+<li><a href="#s2">2. What is this tool? (plain explanation and glossary)</a></li>
+<li><a href="#s3">3. What you need (prerequisites and required programs)</a></li>
+<li><a href="#s4">4. How to download</a></li>
+<li><a href="#s5">5. How to install</a></li>
+<li><a href="#s6">6. Quick start (follow from start to finish)</a></li>
+<li><a href="#s7">7. How to run</a></li>
+<li><a href="#s8">8. How to use (the management window)</a></li>
+<li><a href="#s9">9. How it works (internals)</a></li>
+<li><a href="#s10">10. Command reference</a></li>
+<li><a href="#s11">11. Update summary</a></li>
+<li><a href="#s12">12. File and document locations</a></li>
+<li><a href="#s13">13. Workflow</a></li>
+<li><a href="#s14">14. Architecture</a></li>
+<li><a href="#s15">15. Security and data flow</a></li>
+<li><a href="#s16">16. Troubleshooting</a></li>
+<li><a href="#s17">17. FAQ</a></li>
+<li><a href="#s18">18. Legal, copyright, license, and commercial use</a></li>
+<li><a href="#s19">19. Uninstall and testing</a></li>
+<li><a href="#s20">20. Known limitations (what has not been verified)</a></li>
+</ul>
+<a id="s2"></a>
+<h2>2. What is this tool?</h2>
+<h3>In one sentence</h3>
+<p>A tool that safely manages the documents describing <strong>what each of several AI windows is responsible for (its role)</strong>.</p>
+<h3>An analogy</h3>
+<p>Imagine a company with 12 team members and a <strong>job-assignment sheet</strong> that says who does what and who reports to whom. This tool</p>
+<ul>
+<li>lets you edit that sheet in <strong>one place (the role files)</strong> so every guide document is regenerated to match,</li>
+<li>lets you <strong>move the whole sheet to another computer</strong> (a "new office"),</li>
+<li>and <strong>automatically keeps a copy (backup)</strong> before you change anything, so you can undo mistakes.</li>
+</ul>
+<h3>What it does / does not do</h3>
+<div class="tw"><table>
+<thead><tr><th>What it does</th><th>What it does not do</th></tr></thead>
+<tbody>
+<tr><td>Keeps the definitions of 12 roles as files</td><td>Send text or keys to AI windows (by default)</td></tr>
+<tr><td>Generates the role table, role cards and a tab layout plan (<code>sync</code>)</td><td>Send information over the internet (the code contains no internet-access code)</td></tr>
+<tr><td>View, edit, create, revert and delete roles</td><td>Delete your folders wholesale</td></tr>
+<tr><td>Export / import role bundles (move to another PC)</td><td>Overwrite your settings without permission</td></tr>
+<tr><td>Automatic backup and restore</td><td>Modify the Herdr app itself or AI chat history</td></tr>
+<tr><td>Show which windows are open right now (read-only)</td><td>Change startup programs, Task Scheduler, the registry, or PATH</td></tr>
+</tbody>
+</table></div>
+<h3>Glossary in plain words</h3>
+<div class="tw"><table>
+<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><strong>Terminal / PowerShell</strong></td><td>A window where you type commands as text. Open the Start menu and search "PowerShell".</td></tr>
+<tr><td><strong>Command</strong></td><td>A one-line instruction you type in the terminal and confirm with Enter. In this document, <strong>copy the text in the grey boxes exactly and paste it.</strong></td></tr>
+<tr><td><strong>Folder / path</strong></td><td>Where files live, and its address. Example: <code>C:\Users\YourName\Downloads</code></td></tr>
+<tr><td><strong>Node.js</strong></td><td>A free program that runs this tool's main programs (<code>.mjs</code> files). You must install it separately.</td></tr>
+<tr><td><strong>Herdr</strong></td><td>An app that gathers many terminals (AI windows) into one screen. <strong>A separate program that is not included in this repository.</strong></td></tr>
+<tr><td><strong><code>hc</code></strong></td><td>A command-line tool that queries/controls windows inside Herdr. Not included in this repository.</td></tr>
+<tr><td><strong>Claude Code</strong></td><td>Anthropic's AI coding tool used in a terminal. Most of the "AI windows" this tool deals with are this.</td></tr>
+<tr><td><strong>Role</strong></td><td>The definition of the job one AI window handles, e.g. "Verifier" or "Security checker". One <code>.md</code> file in <code>roles\</code> is one role.</td></tr>
+<tr><td><strong>Commander</strong></td><td>The role that hands out work to other role windows, gathers results, and reports to you.</td></tr>
+<tr><td><strong>sync</strong></td><td>The step that reads the role files and regenerates the role table, cards and tab layout plan.</td></tr>
+<tr><td><strong>Mod</strong></td><td>A small window program embedded in Herdr. This tool's "management window" is also available as a mod.</td></tr>
+<tr><td><strong>Plugin / marketplace</strong></td><td>A package that adds features to Claude Code, and a list that gathers such packages.</td></tr>
+<tr><td><strong>Environment variable</strong></td><td>A "note" a program reads for its settings. This tool reads <code>ORCH_HOME</code> (where settings are kept).</td></tr>
+<tr><td><strong>Backup / restore</strong></td><td>Saving a copy from before a change / going back to that copy.</td></tr>
+</tbody>
+</table></div>
+<a id="s3"></a>
+<h2>3. What you need (prerequisites and required programs)</h2>
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Required?</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><strong>Windows 10 or 11</strong></td><td>Required</td><td>Windows only. Development and testing were done on Windows 11 only. Windows 10 was not checked.</td></tr>
+<tr><td><strong>Windows PowerShell 5.1</strong></td><td>Required</td><td>Built into Windows. Nothing to install.</td></tr>
+<tr><td><strong>Node.js 18 or newer</strong></td><td>Required</td><td>The installer stops with "abort" if the version is below 18. Development and tests used a recent version (26.7.0); versions 18–25 were not checked directly. Get it from <a href="https://nodejs.org">https://nodejs.org</a> (the <strong>LTS</strong> button).</td></tr>
+<tr><td><strong>Herdr app</strong></td><td>Optional</td><td>Needed for the "management window inside Herdr". Without it you can still use the separate Windows window. Where Herdr is distributed and under what terms could not be confirmed from this repository; follow the provider's instructions.</td></tr>
+<tr><td><strong><code>hc</code> command</strong></td><td>Optional</td><td>Used by the "Live windows" tab and the <code>functions</code> scripts. Without it only those parts say "cannot query"; everything else works.</td></tr>
+<tr><td><strong>Claude Code</strong></td><td>Optional</td><td>Needed to install as a marketplace plugin and to actually operate roles with AI windows.</td></tr>
+<tr><td><strong>Git</strong></td><td>Optional</td><td>Only needed to download with <code>git clone</code>. Not needed if you use a ZIP file.</td></tr>
+<tr><td><strong>Administrator rights</strong></td><td>Not needed</td><td>Installation works with a normal user account.</td></tr>
+<tr><td><strong>Internet</strong></td><td>Only for setup</td><td>Only needed to download Node.js. The tool itself does not use the internet.</td></tr>
+</tbody>
+</table></div>
+<p><strong>Check whether Node.js is already installed</strong> — open PowerShell and type the line below. A number of <code>v18</code> or higher means you are fine.</p>
+<pre><code>node -v</code></pre>
+<p>If it says <code>node</code> cannot be found, install Node.js LTS, then <strong>close the PowerShell window and open a new one</strong> and check again (only a new window recognizes it).</p>
+<a id="s4"></a>
+<h2>4. How to download</h2>
+<p>This repository is public on GitHub.</p>
+<ul>
+<li>Repository address: <a href="https://github.com/sodam-ai/SoDam-Herdr-Orchestration-Kit">https://github.com/sodam-ai/SoDam-Herdr-Orchestration-Kit</a></li>
+<li><strong>Method A — ZIP</strong> (no Git needed): click the green <strong>Code</strong> button on the repository page → <strong>Download ZIP</strong>. <strong>Extract</strong> the ZIP (right-click → Extract All) before use. Running from inside the ZIP will fail to find some files.</li>
+<li><strong>Method B — Git</strong>: when Git is installed.</li>
+</ul>
+<pre><code>git clone https://github.com/sodam-ai/SoDam-Herdr-Orchestration-Kit.git</code></pre>
+<ul>
+<li><strong>Method C — marketplace</strong>: see <a href="#s5-3">Method 3 in Chapter 5</a>.</li>
+</ul>
+<p>If you can see folders such as <code>bin</code>, <code>roles</code>, <code>functions</code> and files <code>README.md</code>, <code>VERSION</code> inside, it is correct. Extraction may add one extra folder level, so the <strong>folder where <code>bin</code> is directly visible</strong> is the "project folder".</p>
+<blockquote>
+<p>Make sure the files came from <strong>someone you trust</strong>. This tool does not verify copies distributed by anyone other than the owner.</p>
+</blockquote>
+<a id="s5"></a>
+<h2>5. How to install</h2>
+<p>There are three ways. <strong>We recommend doing Method 1 first.</strong> Method 2 is added optionally after Method 1.</p>
+<blockquote>
+<p><strong>Opening PowerShell in the project folder:</strong> open the project folder (where <code>bin</code> is visible) in File Explorer, click the address bar at the top, and copy the address. Open PowerShell, type <code>cd "</code>, paste, close with <code>"</code> and press Enter. Example: <code>cd "C:\Users\YourName\Downloads\SoDam-Herdr-Orchestration-Kit"</code></p>
+</blockquote>
+<blockquote>
+<p><strong>Why commands contain <code>-ExecutionPolicy Bypass</code>:</strong> Windows may block running downloaded <code>.ps1</code> files by default. This option lifts that restriction <strong>for that single run only</strong>. Your computer-wide settings are not changed.</p>
+</blockquote>
+<h3>Method 1 — Basic install (required · separate Windows window)</h3>
+<p><strong>Step 1: check only</strong> (changes nothing)</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install.ps1 -Check</code></pre>
+<p>If the last line says <code>점검 결과: 중단 0건</code> (check result: 0 aborts), you can install. A <strong>경고 (warning)</strong> means "installs, but some feature is limited", which can be normal (for example: Herdr session keeper not found, allow-list not set yet). If there is even one <strong>중단 (abort)</strong>, read the reason, fix it, and run again.</p>
+<p><strong>Step 2: install</strong></p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install.ps1</code></pre>
+<p>What the installation does:</p>
+<ul>
+<li><strong>Copies</strong> the program files to <code>%LOCALAPPDATA%\Herdr-Orchestration\app</code> (usually <code>C:\Users\YourName\AppData\Local\Herdr-Orchestration\app</code>).</li>
+<li>Creates <code>config</code> (settings), <code>state</code> (work records) and <code>logs</code> folders in the same place, <strong>only the first time</strong>. If they exist, they are <strong>not overwritten.</strong></li>
+<li>Registers risky features <strong>all switched off</strong>.</li>
+</ul>
+<p>What installation does not do: change startup programs, Task Scheduler, the registry or PATH; send input to any window.</p>
+<p>To change locations, add options.</p>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>-OrchHome &lt;folder&gt;</code></td><td>Where settings and records go (default: environment variable <code>ORCH_HOME</code>, otherwise <code>%LOCALAPPDATA%\Herdr-Orchestration</code>)</td></tr>
+<tr><td><code>-InstallDir &lt;folder&gt;</code></td><td>Where program files go (default: <code>&lt;OrchHome&gt;\app</code>)</td></tr>
+<tr><td><code>-DocsDir &lt;folder&gt;</code></td><td>Document folder (default: <code>&lt;OrchHome&gt;\state\docs</code>)</td></tr>
+<tr><td><code>-Force</code></td><td>Allow installing into a different, non-empty folder</td></tr>
+<tr><td><code>-Check</code></td><td>Check only</td></tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>If you do not use the default location:</strong> you must set the environment variable <code>ORCH_HOME</code> to that location every time you use the tool (a note is printed when installation finishes). Example: <code>$env:ORCH_HOME = "D:\myfolder\orch-home"</code> (valid only in this PowerShell window).</p>
+</blockquote>
+<a id="s5-2"></a>
+<h3>Method 2 — Install the management window inside Herdr (optional)</h3>
+<p>A window opened by a shortcut <strong>inside</strong> the Herdr app. Herdr must be installed. <strong>Do Method 1 first.</strong></p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install-herdr-mod.ps1 -Check</code></pre>
+<p>If there is no problem, run it again without <code>-Check</code>.</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install-herdr-mod.ps1</code></pre>
+<p>What this installation does:</p>
+<ol>
+<li>Builds the mod files in a temporary folder and runs <strong>Herdr's official check (<code>herdr-app check</code>) first.</strong> If it does not pass, it <strong>installs nothing</strong> and stops.</li>
+<li>If it passes, copies them to <code>mods\orch-manager</code> in the Herdr settings folder (default <code>~\.config\herdr-app</code>).</li>
+<li>Adds <strong>one line</strong> for the open shortcut (default <code>ctrl-shift-m</code>) at the top of Herdr's <code>keys.json</code>. It <strong>makes a backup first</strong> (<code>keys.json.bak-before-orch-manager</code>) and leaves the file untouched if the result is not valid JSON. If that key is already in use, it is skipped.</li>
+</ol>
+<p>Only the <code>mods\orch-manager</code> folder and one line of <code>keys.json</code> are touched. Other mods, layouts, settings, terminals and chat history are not touched.</p>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>-Key &lt;key&gt;</code></td><td>Change the open shortcut (e.g. <code>ctrl-shift-o</code>)</td></tr>
+<tr><td><code>-NoKey</code></td><td>Do not bind a shortcut. Open only via the command palette (<code>Ctrl+Shift+P</code>) → <code>mod.open orch-manager</code>.</td></tr>
+<tr><td><code>-HerdrHome &lt;folder&gt;</code></td><td>Herdr settings folder (default: environment variable <code>HERDR_APP_HOME</code>, otherwise <code>~\.config\herdr-app</code>)</td></tr>
+<tr><td><code>-HerdrApp &lt;file&gt;</code></td><td>Location of <code>herdr-app.exe</code> (default <code>%LOCALAPPDATA%\Programs\herdr-app\herdr-app.exe</code>)</td></tr>
+<tr><td><code>-Uninstall</code></td><td>Remove (deletes only files we created and removes the one key line)</td></tr>
+</tbody>
+</table></div>
+<a id="s5-3"></a>
+<h3>Method 3 — Claude Code marketplace plugin (optional)</h3>
+<p>This repository is a Claude Code marketplace (<code>.claude-plugin\marketplace.json</code>), and the plugin is named <code>herdr-orchestration-manager</code> (version 0.1.0). The install-helper skill inside the plugin runs Method 1 and Method 2 above <strong>in order</strong>. Running <code>install.ps1</code> in the plugin folder directly does the same.</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-orchestration-manager\install.ps1 -Check</code></pre>
+<blockquote>
+<p>Installing remotely through a marketplace address could <strong>not be run and confirmed</strong> while writing this document. The whole folder-based install flow of the plugin was confirmed by the automated test (<code>tests\plugin.test.mjs</code>).</p>
+</blockquote>
+<a id="s6"></a>
+<h2>6. Quick start (follow from start to finish)</h2>
+<p><strong>Total time: about 5 minutes.</strong> Go <strong>from top to bottom, in order</strong>.</p>
+<ol>
+<li>Check Node.js: <code>node -v</code> → <code>v18</code> or higher passes (<a href="#s3">Chapter 3</a>).</li>
+<li>Open PowerShell in the project folder (see <a href="#s5">Chapter 5</a>).</li>
+<li>Check: <code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install.ps1 -Check</code> → confirm <code>중단 0건</code> (0 aborts).</li>
+<li>Install: the same command without <code>-Check</code>.</li>
+<li><strong>Open the settings file.</strong> Open <code>%LOCALAPPDATA%\Herdr-Orchestration\config\orchestration.json</code> in Notepad (paste <code>%LOCALAPPDATA%\Herdr-Orchestration\config</code> into the File Explorer address bar to get there). Change the values below <strong>to fit this computer</strong> and save.
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Default</th><th>What to enter</th></tr></thead>
+<tbody>
+<tr><td><code>scope_prefix</code></td><td><code>(미설정)</code> (= "not set")</td><td>The first part of the name of the Herdr space to manage</td></tr>
+<tr><td><code>projects_root</code></td><td><code>(미설정)</code> (= "not set")</td><td>The parent folder that holds your project folders</td></tr>
+<tr><td><code>commander_name</code></td><td><code>orch-commander</code></td><td>The name for the commander window (lowercase letters, digits, <code>-</code>, <code>_</code>; 1–32 characters)</td></tr>
+<tr><td><code>control_dir</code></td><td><code>&lt;settings location&gt;\control</code></td><td>The folder for commander record files</td></tr>
+</tbody>
+</table></div>
+<blockquote>
+<p>If you leave <code>(미설정)</code>, <code>sync</code> prints a warning that "no window in that scope will be picked up". It does not stop with an error, but you must fill in the values to use it for real.</p>
+</blockquote>
+</li>
+<li>Generate the output (from the install folder; if <code>&lt;ORCH_HOME&gt;</code> is the default you do not need to set the environment variable):
+<pre><code>node "%LOCALAPPDATA%\Herdr-Orchestration\app\bin\sync.mjs"</code></pre>
+<p>On success it prints <code>sync 완료: 역할 12개 (켜짐 11, 꺼짐 1) → 역할표 1, 카드 11, 탭 4개 계획</code> (sync done: 12 roles (11 on, 1 off) → 1 role table, 11 cards, 4 tabs planned). The result files appear in <code>%LOCALAPPDATA%\Herdr-Orchestration\state\generated</code>.</p>
+</li>
+<li>Open the management window: <strong>double-click</strong> <code>%LOCALAPPDATA%\Herdr-Orchestration\app\bin\Herdr-Orchestration-Manager.vbs</code>.</li>
+<li>(Optional) The window inside Herdr: after <a href="#s5-2">Method 2 in Chapter 5</a>, press <code>Ctrl+Shift+M</code> in Herdr.</li>
+</ol>
+<a id="s7"></a>
+<h2>7. How to run</h2>
+<div class="tw"><table>
+<thead><tr><th>What</th><th>How</th></tr></thead>
+<tbody>
+<tr><td><strong>Separate Windows management window</strong></td><td>Double-click <code>&lt;install folder&gt;\bin\Herdr-Orchestration-Manager.vbs</code> (opens without a black console window). To run it directly: <code>powershell -NoProfile -ExecutionPolicy Bypass -STA -File bin\orch-manager.ps1</code></td></tr>
+<tr><td><strong>Management window inside Herdr</strong></td><td>Press <code>Ctrl+Shift+M</code> in Herdr (the key chosen at install). If the key does not work, press <code>Ctrl+Shift+P</code> and enter <code>mod.open orch-manager</code></td></tr>
+<tr><td><strong>Regenerate roles and documents</strong></td><td><code>node bin\sync.mjs</code> (<a href="#s10">Chapter 10</a>)</td></tr>
+<tr><td><strong>Check role syntax</strong></td><td><code>node bin\validate-roles.mjs</code></td></tr>
+</tbody>
+</table></div>
+<p>If you changed the settings location from the default, enter this once in the same PowerShell window before running:</p>
+<pre><code>$env:ORCH_HOME = "put\your\location\here"</code></pre>
+<a id="s8"></a>
+<h2>8. How to use (the management window)</h2>
+<p>The Windows window and the window inside Herdr use the <strong>same engine</strong>. The wording on screen (mode and cadence names, etc.) is aligned as well. The tabs are as follows (the window inside Herdr has one more "단축키" (Shortcuts) tab at the end).</p>
+<div class="tw"><table>
+<thead><tr><th>Tab</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>현황</strong> (Status)</td><td>Shows the installation state (version, settings and backup locations, number of roles and problems, etc.). The <strong>[sync 실행 (생성물 갱신)]</strong> (run sync) button regenerates the role table, cards and layout plan.</td></tr>
+<tr><td><strong>역할 편집</strong> (Edit roles)</td><td>Pick a role from the list, edit its name, summary, slot, mode, cadence, reports-to, etc., and <strong>[저장]</strong> (Save). <strong>[끄기 / 켜기]</strong> (Turn off / on), <strong>[번들 값으로 되돌리기]</strong> (Revert to bundle values), <strong>[새 역할 만들기...]</strong> (Create new role...) and <strong>[내가 만든 역할 삭제]</strong> (Delete a role I created) are here too.</td></tr>
+<tr><td><strong>내보내기·불러오기</strong> (Export · Import)</td><td><strong>[내보내기]</strong> (Export) saves your role bundle to a folder; <strong>[미리보기...]</strong> (Preview...) imports a bundle from another PC. Import <strong>shows a preview first</strong> and asks once more, "정말 적용할까요?" (Really apply?), just before applying.</td></tr>
+<tr><td><strong>백업 · 복구</strong> (Backup · Restore)</td><td><strong>[지금 백업]</strong> (Back up now), the backup list, <strong>[선택한 백업으로 복구...]</strong> (Restore from the selected backup... — preview, then apply), <strong>[백업 폴더 열기]</strong> (Open backup folder).</td></tr>
+<tr><td><strong>실제 창</strong> (Live windows)</td><td><strong>Read-only</strong> list of the windows currently open in Herdr. <strong>[선택한 창 주소 복사]</strong> (Copy selected window address) copies a window address. Without <code>hc</code> it says "cannot query".</td></tr>
+<tr><td><strong>단축키</strong> (Shortcuts, Herdr window only)</td><td>Change the key that opens this window and verify that it reached the real file using "저장 진단" (save diagnosis).</td></tr>
+</tbody>
+</table></div>
+<blockquote>
+<p>Button names above are for the Windows management window. The window inside Herdr offers the same functions with similarly named buttons. <strong>[번들 값으로 되돌리기]</strong> removes the changes you layered on top of a bundled role and returns it to its original state; <strong>[내가 만든 역할 삭제]</strong> deletes only roles you created (bundled roles cannot be deleted).</p>
+</blockquote>
+<p>Keyboard in the Herdr window: <code>Esc</code> close · <code>Ctrl+1</code>–<code>Ctrl+6</code> switch tab · <code>F5</code> refresh · <code>Ctrl+S</code> save (on the Edit roles tab).</p>
+<h3>Editing one role (example)</h3>
+<ol>
+<li>Open the management window → <strong>역할 편집</strong> tab.</li>
+<li>Click the role to edit in the list (e.g. "검증관" / Verifier).</li>
+<li>Change a value. Example: cadence from "요청 시 (on-request)" to "주기적 (periodic)".</li>
+<li><strong>[저장]</strong>. Just before saving, <strong>if "my settings" files already exist, an automatic backup is made.</strong> (When you edit for the first time and no file of yours exists yet, there is nothing to back up, so none is made. The bundle is never changed, so <strong>[번들 값으로 되돌리기]</strong> can return a role to its original state.) If the result violates the rules, <strong>nothing is written</strong> and the reason is shown.</li>
+<li>After saving, <strong>run sync again</strong> so the role table and cards reflect the new content (the <strong>[sync 실행 (생성물 갱신)]</strong> button on the "현황" tab, or the command in <a href="#s10">Chapter 10</a>).</li>
+</ol>
+<h3>Mode and cadence names</h3>
+<div class="tw"><table>
+<thead><tr><th>Shown on screen</th><th>Stored value</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>읽기 전용 (read-only)</td><td><code>read-only</code></td><td>Only reads files</td></tr>
+<tr><td>범위 내 쓰기 (scoped-write)</td><td><code>scoped-write</code></td><td>May write only to the places listed in <code>writes_to</code></td></tr>
+<tr><td>요청 시 (on-request)</td><td><code>on-request</code></td><td>Works only when asked</td></tr>
+<tr><td>주기적 (periodic)</td><td><code>periodic</code></td><td>Works at set intervals</td></tr>
+</tbody>
+</table></div>
+<h3>Moving to another PC</h3>
+<ol>
+<li>Original PC: on the <strong>내보내기·불러오기</strong> tab, choose a folder and export. A <strong>subfolder</strong> named <code>orch-export-date-time</code> is created inside it, containing <code>package.json</code> and the files.</li>
+<li>Move that whole subfolder to the new PC by USB, cloud, etc.</li>
+<li>New PC: after installing this tool, on the <strong>내보내기·불러오기</strong> tab, choose the <strong><code>orch-export-…</code> subfolder</strong> and look at the <strong>preview</strong>. (If you choose the parent folder, it says "묶음 폴더가 아님" = "not a bundle folder".)</li>
+<li>If the content is right, apply it. <strong>New roles and changed roles from someone else's bundle arrive "switched off".</strong> Their text is an instruction that AI windows follow, so <strong>read it</strong> and switch them on yourself.</li>
+</ol>
+<a id="s9"></a>
+<h2>9. How it works (internals)</h2>
+<ol>
+<li><strong>Role file</strong> (<code>roles\*.md</code>): between the <code>---</code> lines at the top are <strong>fields</strong> such as name, summary, slot, mode, cadence, reports-to; below is the <strong>body</strong> that the AI window follows. The field format is defined by <code>schema\role.schema.json</code>.</li>
+<li><strong>My roles folder</strong> (<code>&lt;settings location&gt;\config\roles</code>): a file with the same id <strong>overrides</strong> a bundled role (you only write the fields you change); a new id becomes a <strong>new role</strong>. Upgrades never touch this folder.</li>
+<li><strong>Settings</strong> (<code>orchestration.json</code>): paths and names are not hard-coded; they are read here.</li>
+<li><strong>sync</strong>: combines the roles (bundle + mine) with the settings and produces <code>역할표.md</code> (role table), role cards (<code>cards\&lt;role-id&gt;.md</code>), the tab layout plan (<code>layout-plan.json</code>) and a file list (<code>sync-manifest.json</code>). It <strong>only creates plans and documents</strong>: it does not create windows, call <code>hc</code>, or send anything to any window. If validation fails, the previous output is left as it was.</li>
+<li><strong>Tab layout rule</strong>: tab names are determined by <strong>slot number</strong> (default: slots 1–4, 5–8, 9–10 grouped, then four at a time). Turning a role off or changing it <strong>does not change tab names.</strong></li>
+<li><strong>Management engine</strong> (<code>bin\manage.mjs</code>): handles everything the management window does (role edits, export/import, backup/restore, sync, live-window query). Before changing anything it <strong>validates</strong> the candidate, makes an <strong>automatic backup</strong>, and writes files by <strong>writing a temporary file and then renaming it</strong> (so a half-written file is never left if it stops midway).</li>
+</ol>
+<h3>The 12 roles included at the start</h3>
+<div class="tw"><table>
+<thead><tr><th>id</th><th>Name (Korean original)</th><th>Slot</th><th>Mode</th><th>Cadence</th><th>What it does (summary)</th></tr></thead>
+<tbody>
+<tr><td><code>commander</code></td><td>Commander (총지휘)</td><td>0</td><td>scoped-write</td><td>periodic</td><td>Assigns work, handles approvals, collects your decisions through numbered menus, reports</td></tr>
+<tr><td><code>approval-proxy</code></td><td>Approval proxy (승인 대행)</td><td>0</td><td>read-only</td><td>periodic</td><td>Presses the recommended choice on approval prompts in the commander window (<strong>off by default</strong>)</td></tr>
+<tr><td><code>approval-reviewer</code></td><td>Approval reviewer (승인 심사관)</td><td>1</td><td>read-only</td><td>on-request</td><td>Classifies the risk of windows waiting for approval in one line and reports</td></tr>
+<tr><td><code>ledger-keeper</code></td><td>Candidate/ledger keeper (후보·장부관)</td><td>2</td><td>scoped-write</td><td>on-request</td><td>Picks improvement candidates per project, ranks them, maintains the ledger</td></tr>
+<tr><td><code>verifier</code></td><td>Verifier (검증관)</td><td>3</td><td>read-only</td><td>on-request</td><td>Judges the pre-push review queue as PASS / on hold</td></tr>
+<tr><td><code>human-tasks</code></td><td>Human-task organizer (사람 몫 정리)</td><td>4</td><td>scoped-write</td><td>on-request</td><td>Organizes items needing your decision into numbered-menu candidates</td></tr>
+<tr><td><code>window-inspector</code></td><td>Window state inspector (창 상태 점검관)</td><td>5</td><td>read-only</td><td>on-request</td><td>Classifies why windows have been idle, checks window state after a restart</td></tr>
+<tr><td><code>test-dispatcher</code></td><td>Test dispatcher (시험 지시)</td><td>6</td><td>read-only</td><td>on-request</td><td>Plans and reports safe read-only tests per project in rotation</td></tr>
+<tr><td><code>doc-consistency</code></td><td>Document consistency supervisor (문서 정합 감독관)</td><td>7</td><td>read-only</td><td>on-request</td><td>Checks that READMEs/PRDs match the code and records</td></tr>
+<tr><td><code>git-keeper</code></td><td>Git keeper (깃)</td><td>8</td><td>read-only</td><td>on-request</td><td>Pushes to a working branch only the items whose conditions are met</td></tr>
+<tr><td><code>security-guard</code></td><td>Security / sensitive-data checker (보안·민감정보 점검관)</td><td>9</td><td>read-only</td><td>on-request</td><td>Before push/publish, checks for keys, tokens, passwords, personal data mixed in</td></tr>
+<tr><td><code>role-auditor</code></td><td>Role overlap / scope auditor (역할 중복·범위 감사관)</td><td>10</td><td>read-only</td><td>on-request</td><td>Re-checks role overlap and whether approval records kept within scope</td></tr>
+</tbody>
+</table></div>
+<blockquote>
+<p>The role bodies (the instructions AI windows read) are written in Korean. The table above is a shortened translation of each role file's <code>summary</code> field; <code>roles\*.md</code> and the generated <code>역할표.md</code> are the authoritative source.</p>
+</blockquote>
+<h3>Bundled features (<code>functions\</code>)</h3>
+<p>Five scripts that inspect or assist AI windows. <strong>Those with high risk are automatically switched off at installation.</strong></p>
+<div class="tw"><table>
+<thead><tr><th>Feature</th><th>Risk</th><th>Default</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>pending</code></td><td>Low</td><td>On</td><td>Shows briefly only the pending command of windows waiting for approval (read-only)</td></tr>
+<tr><td><code>queue</code></td><td>Low</td><td>On</td><td>Window status table (<code>status</code>), look at one window (<code>peek</code>), summary of blocked windows (<code>digest</code>), etc. (read-only)</td></tr>
+<tr><td><code>watch</code> — alerts (<code>alerts</code>)</td><td>Medium</td><td>On</td><td>Collects alerts for long-blocked windows, finished windows and errors (read only)</td></tr>
+<tr><td><code>watch</code> — auto-compact (<code>auto-compact</code>)</td><td><strong>High</strong></td><td><strong>Off</strong></td><td>Types <code>/compact</code> into an AI window whose context usage is high. Works only when <strong>both</strong> <code>ORCH_AUTOCOMPACT=1</code> and an allow-list exist</td></tr>
+<tr><td><code>approve</code></td><td><strong>High</strong></td><td><strong>Off</strong></td><td>Presses Enter (yes) or Esc (no) on <strong>one</strong> approval prompt only when every safety condition passes</td></tr>
+<tr><td><code>autopress</code></td><td><strong>High</strong></td><td><strong>Off</strong></td><td>Presses "1. Yes" on one approval-proxy window only when the prompt is <strong>provably safe</strong>; otherwise only raises a request for human review. Works only when <code>ORCH_ENABLE_AUTOPRESS=1</code></td></tr>
+</tbody>
+</table></div>
+<a id="s10"></a>
+<h2>10. Command reference</h2>
+<p>Type every command in the project folder (or the install folder <code>&lt;settings location&gt;\app</code>). If the settings location is not the default, set <code>$env:ORCH_HOME</code> first.</p>
+<h3>Install and uninstall</h3>
+<div class="tw"><table>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install.ps1 -Check</code></td><td>Installation check (no changes)</td></tr>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install.ps1</code></td><td>Install / update</td></tr>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\uninstall.ps1 -Check</code></td><td>Only show what would be removed</td></tr>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\uninstall.ps1</code></td><td>Remove program files only (settings and records are kept)</td></tr>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\uninstall.ps1 -RemoveData</code></td><td>Also remove settings and records (only files in the install record)</td></tr>
+<tr><td><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\install-herdr-mod.ps1 [-Check｜-Uninstall｜-Key ｜-NoKey]</code></td><td>Install / remove the management window inside Herdr</td></tr>
+</tbody>
+</table></div>
+<h3>Roles and generated output</h3>
+<div class="tw"><table>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>node bin\sync.mjs [--out &lt;folder&gt;]</code></td><td>Generate role table, cards and tab layout plan. Options: <code>--config</code> <code>--out</code> <code>--roles-dir</code> <code>--user-roles-dir</code> <code>--templates-dir</code> <code>--schema</code> <code>--env-rules</code>. Exit codes: 0 success / 1 validation or layout failure / 2 usage or settings error</td></tr>
+<tr><td><code>node bin\validate-roles.mjs</code></td><td>Check role files (exit code 1 with reasons if any is invalid)</td></tr>
+<tr><td><code>node bin\render-card.mjs &lt;role-id&gt; --config &lt;settings.json&gt;</code></td><td>Print one role card to the screen</td></tr>
+<tr><td><code>node bin\init-config.mjs --orch-home &lt;folder&gt; --functions-dir &lt;folder&gt;</code></td><td>Create the default settings file <strong>only the first time</strong> (exit code 3 if it exists; never overwrites). The installer calls it automatically</td></tr>
+</tbody>
+</table></div>
+<h3>Management engine (<code>node bin\manage.mjs &lt;command&gt;</code>)</h3>
+<p>Commands the management window uses internally. Give request values as <strong>JSON on standard input</strong> (you can also read from a file with <code>--request-file &lt;file&gt;</code> or call without input using <code>--no-input</code>); the result is one line of JSON. Exit code: 0 success, 1 failure, 2 command error.</p>
+<div class="tw"><table>
+<thead><tr><th>Command</th><th>Description</th><th>Main request values</th></tr></thead>
+<tbody>
+<tr><td><code>status</code></td><td>Status</td><td>none</td></tr>
+<tr><td><code>role-list</code></td><td>Role list and problems</td><td>none</td></tr>
+<tr><td><code>role-set</code></td><td>Edit role fields</td><td><code>id</code>, <code>fields</code>, optional <code>body</code></td></tr>
+<tr><td><code>role-new</code></td><td>New role</td><td><code>id</code>, <code>fields</code>, optional <code>from</code>, <code>body</code></td></tr>
+<tr><td><code>role-revert</code></td><td>Remove my changes and return to the bundle default</td><td><code>id</code></td></tr>
+<tr><td><code>role-delete</code></td><td>Delete my role</td><td><code>id</code></td></tr>
+<tr><td><code>export</code></td><td>Export a bundle</td><td><code>dest</code>, optional <code>scope</code> (<code>portable</code>｜<code>full</code>), <code>note</code></td></tr>
+<tr><td><code>import-plan</code></td><td>Import preview</td><td><code>pkg</code>, optional <code>mode</code> (<code>merge</code>｜<code>replace</code>), etc.</td></tr>
+<tr><td><code>import-apply</code></td><td>Apply import</td><td><code>pkg</code>, <code>token</code> (the confirmation value from the preview)</td></tr>
+<tr><td><code>backup</code> / <code>backup-list</code></td><td>Create backup / list</td><td>optional <code>note</code></td></tr>
+<tr><td><code>restore-plan</code> / <code>restore-apply</code></td><td>Restore preview / apply</td><td><code>pkg</code>, <code>token</code></td></tr>
+<tr><td><code>sync-run</code></td><td>Run sync</td><td>optional <code>out</code></td></tr>
+<tr><td><code>live-windows</code></td><td>Query open windows (read)</td><td>optional <code>scopePrefix</code></td></tr>
+</tbody>
+</table></div>
+<p>Export scopes: <code>portable</code> = my roles + <code>env-rules.md</code> + <code>ignore.txt</code>; <code>full</code> = all of my settings.</p>
+<h3>Development and test tools</h3>
+<div class="tw"><table>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>node tools\build-plugin.mjs</code> / <code>--check</code></td><td>Sync the plugin copy (<code>plugins\…\payload</code>) with the original / only check for drift</td></tr>
+<tr><td><code>node tools\cleanup-test-temp.mjs</code></td><td><strong>Preview</strong> of temporary folders left by tests. Add <code>--apply</code> to delete (<code>--apply --limit 1</code> is recommended the first time). A tool that <strong>you run yourself</strong>.</td></tr>
+<tr><td>Running tests</td><td><a href="#s19">Chapter 19</a></td></tr>
+</tbody>
+</table></div>
+<a id="s11"></a>
+<h2>11. Update summary</h2>
+<p>The current version is the single version <code>0.1.0</code> (the <code>VERSION</code> file). Below is a change summary in development order; click an item to expand it. All dates are in 2026.</p>
+<details>
+<summary><b>11-16 · License, preventive security hardening, documentation</b></summary>
+<ul>
+<li>Assigned the <strong>Apache License 2.0</strong> and added <code>LICENSE</code>, <code>NOTICE</code> and <code>LEGAL-GUIDE.md</code> (rights holder SoDam AI Studio). The license is also shown in the plugin metadata.</li>
+<li>Preparation for publication: the author PC's paths, window addresses and internal project names in documents and tests were replaced with placeholders.</li>
+<li>Added <code>.env</code>, certificate and key-file patterns to <code>.gitignore</code> (prevents accidental commits).</li>
+<li>Wrote the Korean and English README (md and html).</li>
+<li>Final security review: 8 kinds of malicious bundle import, command-injection and path-manipulation tests were all blocked.</li>
+</ul>
+</details>
+<details>
+<summary><b>11-15 · Management tool, window inside Herdr, plugin, UI improvements</b></summary>
+<ul>
+<li>Management engine (status, role editing, export/import, backup/restore) and a separate Windows management window.</li>
+<li>"Live windows" (read-only) tab.</li>
+<li>Management window opened inside Herdr (mod) and a marketplace plugin.</li>
+<li>Shortcut-change tab. Fixed a problem where a shortcut change was not reflected in the real file by making a <code>node</code> tool do the writing.</li>
+<li>Complete UI overhaul of the Herdr window (shared components, tab separation, status display, keyboard shortcuts, text/background contrast AA).</li>
+<li>Mode and cadence choices in the Windows window unified with the Herdr window's Korean wording.</li>
+<li>Security fixes: imported roles bypassing the "import switched off" rule with multiple BOMs; three <code>ignore</code>-validation bypasses.</li>
+<li>Fixed the last column of the role list being cut off.</li>
+</ul>
+</details>
+<details>
+<summary><b>11-14 · Structure cleanup after install, approval-proxy security hardening</b></summary>
+<ul>
+<li>Fixed tab names to slot numbers, introduced the my-roles folder, unified path rules.</li>
+<li>Added the environment-rules layer and a one-line role summary (<code>summary</code>).</li>
+<li>File-edit auto-approval now turns on only when <code>ORCH_DOCS_DIR</code> is set explicitly (no default).</li>
+<li>Cross-checking of the approval prompt header, question line and path line (S6 series).</li>
+<li>Fixed input-handling defects (strict UTF-8 reading, error messages, install check).</li>
+<li>Test temp-folder cleanup tool. New-PC simulation test 18/18.</li>
+</ul>
+</details>
+<details>
+<summary><b>11-13 · Design and basic implementation</b></summary>
+<ul>
+<li>Wrote the porting design document; label isolation test.</li>
+<li>Extracted the 12 role files and tested them against the originals.</li>
+<li>Install / check / uninstall tools and <code>sync</code>.</li>
+<li>Ported feature scripts and approval-proxy security fixes S1–S5 (switched parts that could be bypassed to an allow-list approach).</li>
+<li>Turned numbers and names inside role bodies into variables and removed state sentences from cards.</li>
+</ul>
+</details>
+<a id="s12"></a>
+<h2>12. File and document locations</h2>
+<h3>Project folder (what you downloaded)</h3>
+<pre><code>SoDam-Herdr-Orchestration-Kit\
+├─ README.md / README.en.md        This document (Korean / English)
+├─ README.html / README.en.html    Web pages with the same content
+├─ LICENSE                         Apache License 2.0 text
+├─ NOTICE                          Attribution notice (Apache-2.0 manner)
+├─ LEGAL-GUIDE.md                  Plain guide to the license and rights (Korean and English)
+├─ VERSION                         Version (0.1.0)
+├─ 01_이식-설계서.md               Design document (porting, 3-layer structure, role file format)
+├─ 02_관리도구-설계서.md           Management tool / engine design and risks R1–R15
+├─ bin\                            Install and management programs (install.ps1, sync.mjs, manage.mjs, orch-manager.ps1 …)
+├─ roles\                          The 12 default roles
+├─ functions\                      5 bundled features (approve, autopress, pending, queue, watch)
+├─ herdr-mod\orch-manager\         Source of the management window inside Herdr (mod)
+├─ lib\  schema\  templates\       Path rules / role format definition / card header template
+├─ plugins\herdr-orchestration-manager\   Marketplace plugin (payload is a copy of the originals)
+├─ .claude-plugin\marketplace.json Marketplace list
+├─ docs\                           Step-by-step development notes
+├─ tests\                          Automated tests
+└─ tools\                          Development tools (build-plugin, cleanup-test-temp)</code></pre>
+<h3>On your computer after installation (<code>%LOCALAPPDATA%\Herdr-Orchestration</code>, changeable with the environment variable <code>ORCH_HOME</code>)</h3>
+<pre><code>Herdr-Orchestration\
+├─ app\                Copy of the bundle (treated as read-only, replaced on update)
+├─ config\             My settings — not overwritten on update
+│  ├─ orchestration.json   Settings
+│  ├─ ignore.txt           List of window names to ignore
+│  ├─ env-rules.md         (optional) rules for this PC only
+│  └─ roles\               My roles (same id = override, new id = add)
+├─ state\              Files the tool writes by itself
+│  ├─ generated\           sync output (역할표.md, cards\, layout-plan.json …)
+│  └─ docs\                Document folder (grants no permission by default)
+├─ logs\               Logs
+└─ backups\            Automatic and manual backups</code></pre>
+<h3>On the Herdr side (only if you installed Method 2)</h3>
+<ul>
+<li><code>~\.config\herdr-app\mods\orch-manager\</code> — mod files</li>
+<li><code>~\.config\herdr-app\keys.json</code> — one open-key line added; backup is <code>keys.json.bak-before-orch-manager</code></li>
+</ul>
+<a id="s13"></a>
+<h2>13. Workflow</h2>
+<pre><code> [Once, at the start]                  [Day to day]
+  Install (install.ps1)                  Open the management window
+        ↓                                   ↓
+  Edit settings (orchestration.json)     View / edit roles ──(automatic backup just before saving)
+        ↓                                   ↓
+  Run sync ──→ role table, cards, plan   Run sync again ──→ new role table, cards
+        ↓
+  (Optional) install the window inside Herdr
+
+ [When moving to another PC]
+  Original PC: Export ──→ orch-export-… folder ──→ New PC: Preview ──→ Confirm ──→ Apply (new roles arrive switched off)
+
+ [When something went wrong]
+  Backup · Restore tab ──→ choose a backup ──→ Preview ──→ Confirm ──→ Restore</code></pre>
+<a id="s14"></a>
+<h2>14. Architecture</h2>
+<p><strong>Three layers</strong></p>
+<div class="tw"><table>
+<thead><tr><th>Layer</th><th>Location</th><th>Nature</th></tr></thead>
+<tbody>
+<tr><td>Bundle</td><td>Install folder (<code>app</code>)</td><td>Read-only. <code>roles</code>, <code>templates</code>, <code>schema</code>, <code>bin</code>, <code>lib</code>, <code>functions</code></td></tr>
+<tr><td>My settings</td><td><code>config\</code></td><td>Where the user edits. Not overwritten by updates</td></tr>
+<tr><td>State</td><td><code>state\</code>, <code>logs\</code>, <code>backups\</code></td><td>Files the tool writes by itself</td></tr>
+</tbody>
+</table></div>
+<p><strong>Components</strong></p>
+<pre><code> [Windows management window]   [Window inside Herdr (mod)]      ← screens people see (same engine)
+ orch-manager.ps1              herdr-mod\orch-manager\*.js
+        │                              │
+        └──────────┬───────────────────┘
+                   ▼
+            bin\manage.mjs  (management engine: validate → auto backup → atomic write)
+                   │
+         ┌─────────┼──────────┐
+         ▼         ▼          ▼
+      sync.mjs   Roles and   hc (optional, read-only queries)
+   (plan output)  settings
+                  (files)</code></pre>
+<ul>
+<li>The screens <strong>only call the engine</strong> and never edit files directly. That is why both windows follow the same rules.</li>
+<li>The engine uses <strong>no external packages</strong>, only Node.js built-ins (there is no <code>package.json</code>).</li>
+<li>The plugin's <code>payload\</code> is a copy of the originals; <code>node tools\build-plugin.mjs --check</code> verifies there is no drift.</li>
+</ul>
+<a id="s15"></a>
+<h2>15. Security and data flow</h2>
+<h3>Data flow</h3>
+<pre><code> Input (screen/command)  →  Engine: validate input  →  Pre-validate the resulting state  →  Auto backup  →  Write to temp file  →  Rename (done)
+                                                ↓ validation fails
+                                      Writes nothing and only reports the reason</code></pre>
+<ul>
+<li><strong>There is no internet-access code</strong> (result of a code scan; the only match is the <code>nodejs.org</code> address in an installation message). Data moves only inside this computer.</li>
+<li>Where it writes: under <code>&lt;settings location&gt;</code> (config, state, logs, backups). If you install the Herdr mod, additionally <code>mods\orch-manager</code> and one line of <code>keys.json</code>.</li>
+<li>There is <strong>no feature that receives or stores</strong> passwords, tokens or API keys.</li>
+</ul>
+<h3>Protections (implemented) — ✔ marks what was confirmed by tests in this project</h3>
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Content</th><th>Confirmed</th></tr></thead>
+<tbody>
+<tr><td>Automatic backup before change</td><td>Backs up the current "my settings" just before edit/import/restore (skipped when no file of yours exists yet to back up)</td><td>✔</td></tr>
+<tr><td>No change on validation failure</td><td>Writes nothing if the result violates the rules</td><td>✔</td></tr>
+<tr><td>Atomic writes</td><td>Write a temp file, then rename</td><td>✔</td></tr>
+<tr><td>Bundle is immutable</td><td>Every edit in the management window is written only to "my settings"; the bundle is not changed</td><td>✔</td></tr>
+<tr><td>Others' bundles "switched off"</td><td>New and changed roles arrive switched off (their body is an AI instruction)</td><td>✔</td></tr>
+<tr><td>Bundle path allow-list</td><td>Only fixed shapes such as <code>config\roles\&lt;lowercase-id&gt;.md</code> (rejects <code>../</code>, absolute paths, reserved names)</td><td>✔ 8 kinds of malicious bundles</td></tr>
+<tr><td>Bundle tamper detection</td><td>Compared with per-file SHA-256 and size records; rejects duplicates, out-of-scope files, bundles of another tool, symbolic links; limits 200 KB per file and 200 files</td><td>✔ (symbolic links could not be tested directly due to permissions; code review only)</td></tr>
+<tr><td>Apply confirmation value</td><td>Refuses to apply if it differs from the value received at preview (the bundle or settings changed in between)</td><td>✔</td></tr>
+<tr><td>Command-injection prevention</td><td>External programs are always run with an "argument list" (no shell strings, no <code>eval</code>)</td><td>✔ full code review</td></tr>
+<tr><td>Input validation</td><td>Handles role-id format, mode values, broken JSON, 5 MB input, names containing newlines or <code>---</code></td><td>✔</td></tr>
+<tr><td>No wholesale folder deletion</td><td>Uninstall deletes only files in the install record, one by one</td><td>✔</td></tr>
+<tr><td>Risky features off by default</td><td>Approval proxy, auto-approval, auto-compact</td><td>✔</td></tr>
+<tr><td>Scope of file-edit auto-approval</td><td>Off by default. Only in a folder you set explicitly with <code>ORCH_DOCS_DIR</code></td><td>✔</td></tr>
+<tr><td>Ignore secret files</td><td><code>.gitignore</code> covers <code>.env</code>, <code>*.pem</code>, <code>*.key</code>, etc.</td><td>✔</td></tr>
+<tr><td>Dependencies</td><td>0 external packages → nothing to audit for external vulnerabilities</td><td>✔</td></tr>
+</tbody>
+</table></div>
+<h3>Things for the user to watch</h3>
+<ul>
+<li><strong>Read other people's role bundles before switching them on.</strong> A role body is an instruction AI windows follow as-is, so it could contain malicious sentences.</li>
+<li>Turning on the approval proxy or auto-compact <strong>types keys into other windows.</strong> Several layers of safety conditions exist, but <strong>the chance of misoperation is not zero.</strong> Read the responsibility notice in <a href="#s18">Chapter 18</a> before turning them on.</li>
+<li>Paths containing this computer's user name (<code>C:\Users\…</code>) may appear in settings, logs and generated files, so <strong>do not share the settings folder as it is.</strong></li>
+</ul>
+<a id="s16"></a>
+<h2>16. Troubleshooting</h2>
+<div class="tw"><table>
+<thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Red text: "cannot run script / signature"</td><td>Windows execution policy</td><td>Run with <code>-ExecutionPolicy Bypass</code> as in this document's commands</td></tr>
+<tr><td><code>node : The term ... is not recognized</code></td><td>Node.js not installed or not on PATH</td><td>Install Node.js LTS from <a href="https://nodejs.org">https://nodejs.org</a> → <strong>new</strong> PowerShell window → <code>node -v</code></td></tr>
+<tr><td>Install check: <code>중단: Node.js 18 이상이 필요한데 찾지 못함</code> (abort: Node.js 18+ needed but not found)</td><td>Node missing or too old</td><td>Same as above (18 or newer)</td></tr>
+<tr><td><code>[경고]</code> (warning) in the install check</td><td>Optional feature missing (no session keeper, no allow-list, status line cannot be checked, etc.)</td><td>Installation is possible. Fix only when you need that feature</td></tr>
+<tr><td><code>sync</code> warning: <code>scope_prefix, projects_root 이(가) 아직 '(미설정)'</code> (still "not set")</td><td>Settings not filled in</td><td>Enter values in <code>config\orchestration.json</code></td></tr>
+<tr><td>Import: <code>묶음 폴더가 아님</code> (not a bundle folder)</td><td>You chose the parent folder</td><td>Choose the <strong><code>orch-export-…</code> subfolder</strong></td></tr>
+<tr><td>Import: <code>내용이 기록과 다름(변조 또는 손상)</code> (content differs from record: tampered or damaged)</td><td>The file changed in transit</td><td>Export again from the original PC</td></tr>
+<tr><td>Import: <code>미리보기 이후 묶음이나 내 설정이 바뀌었거나…</code> (the bundle or my settings changed after the preview…)</td><td>Changed between preview and apply</td><td>Preview again, then apply</td></tr>
+<tr><td>Save is refused (<code>검증 실패</code> = validation failed)</td><td>A value violates the rules (e.g. a mode that does not exist, an invalid id)</td><td>Fix the item shown. The file was not changed, so rest assured</td></tr>
+<tr><td>Herdr mod install stops midway</td><td>Herdr's official check failed</td><td><strong>Nothing was installed.</strong> Fix the reason in the message and retry</td></tr>
+<tr><td><code>Ctrl+Shift+M</code> does not open</td><td>Another feature uses that key, so installation skipped binding it</td><td><code>Ctrl+Shift+P</code> → <code>mod.open orch-manager</code>, or reinstall with <code>-Key</code> to choose another key</td></tr>
+<tr><td>"Live windows" tab says "cannot query"</td><td><code>hc</code> missing or Herdr not running</td><td>Install <code>hc</code> / start Herdr, then refresh (<code>F5</code>)</td></tr>
+<tr><td>The management window does not appear</td><td>PowerShell 5.1 or STA launch problem</td><td>Run <code>powershell -NoProfile -ExecutionPolicy Bypass -STA -File bin\orch-manager.ps1</code> directly in PowerShell and read the error text</td></tr>
+<tr><td>You changed the settings location but it looks somewhere else</td><td><code>ORCH_HOME</code> not set</td><td>Set <code>$env:ORCH_HOME = "…"</code> in the same PowerShell window</td></tr>
+</tbody>
+</table></div>
+<p><strong>If you want to undo:</strong> management window <strong>백업 · 복구</strong> (Backup · Restore) tab → choose a backup → preview → apply. Backups are in the <code>backups\</code> folder.</p>
+<p>If it is still not resolved, copy the <strong>whole</strong> error text and tell the owner. Remove your computer user name and paths from the text before sending.</p>
+<a id="s17"></a>
+<h2>17. FAQ</h2>
+<details>
+<summary><b>Can I use it without knowing any programming?</b></summary>
+<p>Installation and use of the management window only need you to <strong>copy and paste</strong> the commands in this document. However, this tool is for "people who operate several AI windows", so if you are new to Herdr or Claude Code, first learn the basics of those programs.</p>
+</details>
+<details>
+<summary><b>Can I use it without Herdr?</b></summary>
+<p>Yes. The separate Windows management window, <code>sync</code>, and backup/restore work without Herdr. Only the "Live windows" query and the management window inside Herdr need Herdr (and <code>hc</code>).</p>
+</details>
+<details>
+<summary><b>What changes on my computer when I install?</b></summary>
+<p>The <code>%LOCALAPPDATA%\Herdr-Orchestration</code> folder is created and files appear only inside it (with Method 2, <code>mods\orch-manager</code> and one line of <code>keys.json</code> in the Herdr settings are added). Startup programs, Task Scheduler, the registry and PATH are not changed.</p>
+</details>
+<details>
+<summary><b>Will updating erase my settings and roles?</b></summary>
+<p>No. <code>config\</code> (settings and my roles) is <strong>not overwritten.</strong> Only the bundle (<code>app\</code>) is replaced with the new one. Still, press <strong>[지금 백업]</strong> (Back up now) in the management window before a big change.</p>
+</details>
+<details>
+<summary><b>How do I remove it?</b></summary>
+<p>See the uninstall commands in <a href="#s19">Chapter 19</a>. The default removal deletes only program files and keeps your settings and records.</p>
+</details>
+<details>
+<summary><b>Does it ever send input to AI windows on its own?</b></summary>
+<p>Not by default. Only three features send input: <code>approve</code>, <code>autopress</code>, and the auto-compact part of <code>watch</code>. All are <strong>off right after installation</strong> and must be turned on separately with environment variables.</p>
+</details>
+<details>
+<summary><b>Is it safe to import a role bundle someone else gave me?</b></summary>
+<p>It is built and tested to <strong>block format-level attacks</strong> such as path manipulation, file tampering and oversize files. But a role body is an <strong>instruction</strong> to the AI, so the tool cannot judge whether the content is malicious. That is why imported roles arrive <strong>switched off</strong> and you switch them on after reading them.</p>
+</details>
+<details>
+<summary><b>May I use it at work or in a business?</b></summary>
+<p><strong>Yes, but you must follow the Apache License 2.0 conditions</strong> (keep a copy of <code>LICENSE</code> and the <code>NOTICE</code>, mark your changes, etc.). Names and trademarks are not licensed, there is no warranty, and external programs (Claude pricing plan, Herdr terms, etc.) must be <strong>checked by you.</strong> See <a href="#s18">Chapter 18</a>.</p>
+</details>
+<details>
+<summary><b>Can I use it on Mac or Linux?</b></summary>
+<p>Not supported. The installer and management window are built on Windows PowerShell and Windows window features, and testing was done on Windows 11 only.</p>
+</details>
+<details>
+<summary><b>Was this tool made by AI?</b></summary>
+<p>An AI coding tool (Claude Code) took part in writing the code and tests during development. This is also stated in the copyright section (<a href="#s18">Chapter 18</a>).</p>
+</details>
+<details>
+<summary><b>Why are the role bodies in Korean rather than English?</b></summary>
+<p>They were carried over from role documents used in the original author's operating environment, so they are in Korean. The English document (<code>README.en.md</code>) is a translation of this guide; the role bodies and on-screen text are Korean.</p>
+</details>
+<a id="s18"></a>
+<h2>18. Legal, copyright, license, and commercial use</h2>
+<blockquote>
+<p><strong>This is informational only, is not legal advice, and does not guarantee legal effect.</strong> The authoritative license text is the <a href="LICENSE"><code>LICENSE</code></a> file. If this chapter reads differently from <code>LICENSE</code>, <strong><code>LICENSE</code> prevails.</strong> Items marked "legal/expert review needed" in this chapter are ones this repository has not concluded. More detail is in <a href="LEGAL-GUIDE.md"><code>LEGAL-GUIDE.md</code></a>.</p>
+</blockquote>
+<h3>18-1. At a glance</h3>
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td>License</td><td><strong>Apache License, Version 2.0</strong> (<code>Apache-2.0</code>; 2.0 is the latest version)</td></tr>
+<tr><td>Rights holder (copyright holder)</td><td><strong>SoDam AI Studio</strong></td></tr>
+<tr><td>Copyright year</td><td>2026 (first written 2026-11-13)</td></tr>
+<tr><td>Related files</td><td><a href="LICENSE"><code>LICENSE</code></a> (official text), <a href="NOTICE"><code>NOTICE</code></a> (attribution notice), <a href="LEGAL-GUIDE.md"><code>LEGAL-GUIDE.md</code></a> (plain explanation)</td></tr>
+<tr><td>Commercial use</td><td><strong>Allowed</strong> (when you meet the conditions below)</td></tr>
+</tbody>
+</table></div>
+<h3>18-2. Plain explanation: how far may I use this project?</h3>
+<div class="tw"><table>
+<thead><tr><th>What you want to do</th><th>Allowed?</th></tr></thead>
+<tbody>
+<tr><td>Use on your own computer</td><td>Yes</td></tr>
+<tr><td>Use for company work or running a business (operating a service)</td><td><strong>Yes</strong></td></tr>
+<tr><td>Modify the code or documents</td><td>Yes</td></tr>
+<tr><td>Copy, fork (keep a copy under your account)</td><td>Yes</td></tr>
+<tr><td>Give to others, put on the internet (redistribution, publication)</td><td>Yes — <strong>when you meet the conditions in 18-3</strong></td></tr>
+<tr><td>Sell it or include it in a paid service</td><td>Yes — when you meet the conditions in 18-3</td></tr>
+<tr><td>Deliver it to a company or client</td><td>Yes — when you meet the conditions in 18-3</td></tr>
+<tr><td>Put the code or documents into lessons or training material</td><td>Yes — when you meet the conditions in 18-3</td></tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>This table covers "the rights the rights holder (SoDam AI Studio) actually holds".</strong> It does not guarantee other companies' programs, names and terms, or rights this repository could not verify (see 18-12).</p>
+</blockquote>
+<h3>18-3. Conditions you must meet when redistributing (summary of License section 4)</h3>
+<ol>
+<li>Give recipients <strong>a copy of the <code>LICENSE</code> file.</strong></li>
+<li>Leave a <strong>prominent notice on files you changed</strong> saying you changed them.</li>
+<li><strong>Do not remove</strong> copyright, patent, trademark and attribution notices in the source code.</li>
+<li>Keep the attribution notices in the <strong><a href="NOTICE"><code>NOTICE</code></a> file</strong> readable in your modified version (in the <code>NOTICE</code> file, in documentation, or on screen).</li>
+</ol>
+<h3>18-4. What is not granted · what you must not do</h3>
+<ul>
+<li><strong>Names and trademarks are not licensed</strong> (License section 6). Do not use names or trademarks such as <code>SoDam</code>, <code>SoDam AI Studio</code> or <code>SoDam Herdr Orchestration Kit</code> <strong>beyond reasonable use to state the origin</strong>, as if they were your own product name.</li>
+<li>Do not use <strong>other companies' names or logos as if affiliated, sponsored or endorsed</strong> (Herdr, Claude, Anthropic, etc.).</li>
+<li>Do not <strong>remove original copyright and attribution notices or claim "I made this".</strong></li>
+<li>Do not say <strong>rights exist that this repository does not have</strong> (for example, saying this license grants the right to use Herdr or Claude).</li>
+<li>Do not put outside material (role bundles, images, fonts, etc.) into this tool and distribute it <strong>without checking its source and rights.</strong></li>
+</ul>
+<h3>18-5. What I must check myself</h3>
+<p>This repository <strong>does not check the items below for you.</strong> The more commercially you use it, the more carefully you should check.</p>
+<div class="tw"><table>
+<thead><tr><th>What to check</th><th>When it is needed</th></tr></thead>
+<tbody>
+<tr><td><strong>Claude Code (Anthropic)</strong> terms of use, usage policy, <strong>pricing plan</strong></td><td>When you actually operate roles with AI windows</td></tr>
+<tr><td><strong>Herdr</strong> terms of use, mod development/distribution conditions</td><td>When you install or distribute the management window inside Herdr (mod)</td></tr>
+<tr><td><strong>Node.js</strong> license</td><td>When you install and use it (it is not included in this repository)</td></tr>
+<tr><td><strong>Windows / PowerShell</strong> terms of use</td><td>Always</td></tr>
+<tr><td><strong>GitHub</strong> terms of service</td><td>When you upload or share the repository</td></tr>
+<tr><td>Rights in fonts, images, icons, music, video, templates</td><td>This tool has none. <strong>What you put into role documents or outputs</strong> is for you to check.</td></tr>
+</tbody>
+</table></div>
+<h3>18-6. Third-party programs and trademarks</h3>
+<ul>
+<li>External programs <strong>not included in this repository</strong>: Node.js, Windows/PowerShell, Herdr (<code>herdr-app</code>, <code>hc</code>), Claude Code, Git. <strong>Each provider's license and terms</strong> apply.</li>
+<li>The Herdr mod only <strong>imports</strong> the mod components Herdr provides (<code>gpui-kit</code>, <code>gpui-base</code>) and does not contain their code. Herdr's mod development/distribution conditions could <strong>not be confirmed</strong> from this repository (<strong>legal/expert review needed</strong>).</li>
+<li>Herdr, Claude, Anthropic, Node.js, Windows, PowerShell, GitHub and similar names are trademarks of their respective owners and appear <strong>only to refer to those things.</strong> There is no affiliation, sponsorship or endorsement.</li>
+<li><strong>No trademark search was done</strong> for the name <code>SoDam</code> (<strong>legal/expert review needed</strong>).</li>
+</ul>
+<h3>18-7. Caution about AI-generated content</h3>
+<ul>
+<li>A large part of the code, documents and tests was written with the help of an AI coding tool (Claude Code). Whether copyright is recognized in AI-generated output, and problems that could arise from similarity to existing works, <strong>differ by country and are not settled</strong> (<strong>legal/expert review needed</strong>).</li>
+<li><strong>Check yourself before publishing, delivering or using commercially:</strong> copyright (whose it is), source, whether commercial use is allowed, and the possibility of conflict with similar works.</li>
+<li>The rights in, and conditions of use for, <strong>output</strong> you make by having AI windows work with this tool depend on <strong>that AI service's terms</strong> and your own check.</li>
+</ul>
+<h3>18-8. No warranty · limitation of liability · risky features</h3>
+<ul>
+<li>This tool is provided <strong>"AS IS" with no warranty of any kind</strong> (License section 7). <strong>Liability is limited</strong> (section 8).</li>
+<li>The approval proxy, auto-approval and auto-compact <strong>type keys into other programs' windows.</strong> <strong>The user is responsible for the consequences</strong> (wrong approvals, unintended command execution, data loss, etc.). Do not turn them on on a computer with important work.</li>
+<li>Even with the backup feature, <strong>keep important data stored separately.</strong></li>
+</ul>
+<h3>18-9. Personal information · example data</h3>
+<ul>
+<li>This tool does not collect personal information or send it outside (there is no internet-access code).</li>
+<li>Local files (settings, logs, generated output) may record <strong>paths that contain this computer's user name.</strong> Check before sharing files.</li>
+<li>The examples in tests and documents (paths, window addresses, project names) are <strong>placeholders, not real values.</strong> Use your own values.</li>
+<li>Do not put personal information, client information or non-public material in this repository, or in your own role documents.</li>
+</ul>
+<h3>18-10. Check result (2026-11-16)</h3>
+<div class="tw"><table>
+<thead><tr><th>Check item</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>External libraries and dependency files (<code>package.json</code>, <code>requirements.txt</code>, <code>Cargo.toml</code>, <code>go.mod</code>, lock files)</td><td><strong>None</strong> → no dependency-license conflict check applies (the scanning tool was not run because it is not applicable)</td></tr>
+<tr><td>Fonts, images, icons, audio, video, binaries</td><td><strong>None</strong></td></tr>
+<tr><td>Passwords, keys, tokens</td><td><strong>None</strong> (everything to be published was scanned)</td></tr>
+<tr><td>Others' trademarks and names</td><td><code>Herdr</code>, <code>Claude</code>, <code>Node.js</code>, <code>Windows</code>, etc. appear <strong>only to refer to those things</strong></td></tr>
+<tr><td>The author PC's paths, window addresses and internal project names in documents and tests</td><td><strong>Replaced with placeholders</strong> for publication</td></tr>
+</tbody>
+</table></div>
+<h3>18-11. Contributions</h3>
+<ul>
+<li>Under License section 5, <strong>unless you state otherwise</strong>, a contribution you submit to this repository is treated as provided under the same Apache-2.0 terms. There is no contribution procedure (<code>CONTRIBUTING</code>) yet, so discuss large changes in an issue first.</li>
+</ul>
+<h3>18-12. Items needing legal/expert review</h3>
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Rights-holder notation <code>SoDam AI Studio</code></td><td>This repository cannot confirm whether it is a legal entity, a business or an individual</td></tr>
+<tr><td>Whether the holder actually has <strong>rights in every part</strong></td><td>Some scripts were carried over from earlier work, and some parts were AI-generated</td></tr>
+<tr><td>Trademark for <code>SoDam</code>, Herdr's mod terms, rights in AI-generated output</td><td>Not checked or researched</td></tr>
+<tr><td>The boundary between taking ideas and copying code or documents</td><td>Needs case-by-case judgment</td></tr>
+</tbody>
+</table></div>
+<a id="s19"></a>
+<h2>19. Uninstall and testing</h2>
+<h3>Uninstall</h3>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File bin\uninstall.ps1 -Check
+powershell -NoProfile -ExecutionPolicy Bypass -File bin\uninstall.ps1</code></pre>
+<ul>
+<li>The first line <strong>only shows the removal list.</strong> The second removes program files only (settings, records and backups remain).</li>
+<li>To also remove settings and records, add <code>-RemoveData</code> at the end of the second line. Files not in the install record (ones you made) are not deleted; they are only listed.</li>
+<li>It <strong>does not delete folders wholesale.</strong> It deletes the files in the install record one by one and only tidies up folders that became empty.</li>
+<li>To remove the management window inside Herdr: <code>bin\install-herdr-mod.ps1 -Uninstall</code>.</li>
+</ul>
+<h3>Automated tests (for development · optional)</h3>
+<p>Run with Node.js, with no external packages. Tests work <strong>only in temporary folders</strong> and do not touch your real settings.</p>
+<pre><code>node tests\roles.test.mjs
+node tests\install.test.mjs
+node tests\manage.test.mjs
+node tests\cleanup.test.mjs
+node tests\mod-model.test.mjs
+node tests\mod-check.test.mjs
+node tests\herdr-keys.test.mjs
+node tests\herdr-mod-install.test.mjs
+node tests\plugin.test.mjs
+node tests\functions.test.mjs
+bash tests/label-isolation.test.sh</code></pre>
+<ul>
+<li><code>functions.test.mjs</code> takes about 4 minutes and has time-sensitive tests, so <strong>do not run it at the same time as other tests.</strong></li>
+<li>Part of <code>roles.test.mjs</code> (about 12 checks) compares against the original author's documents on their PC, so <strong>it is skipped automatically on other PCs.</strong></li>
+<li><code>mod-check</code> and <code>herdr-mod-install</code> are skipped if <code>herdr-app</code> is absent. <code>label-isolation</code> is for environments with Herdr and <code>hc</code>.</li>
+<li>Check temporary folders that tests left in <code>%TEMP%</code> with <code>node tools\cleanup-test-temp.mjs</code> (preview), then clean them yourself.</li>
+<li>Results on the development PC as of 2026-11-15: functions 278 · install 41 · roles 40 · manage 46 · cleanup 10 · mod-model 15 · mod-check 40 · herdr-keys 9 · herdr-mod-install 9 · plugin 9 · label isolation 10, with 0 failures.</li>
+</ul>
+<a id="s20"></a>
+<h2>20. Known limitations (what has not been verified)</h2>
+<p>To keep this document honest, <strong>everything not yet verified or known to be limited</strong> is listed.</p>
+<div class="tw"><table>
+<thead><tr><th>Item</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Windows 10, Node.js 18–25</td><td><strong>Not verified</strong> (tested only on Windows 11 + Node.js 26.7.0)</td></tr>
+<tr><td>A person using the Windows management window by actually clicking with a mouse</td><td><strong>Not verified</strong> (automated screen test and engine tests pass)</td></tr>
+<tr><td>Whether <strong>role save / export from the management window inside Herdr actually reach the real file</strong></td><td><strong>Not verified.</strong> A similar problem existed with the shortcut change and was fixed; this part is being checked with "저장 진단" (save diagnosis). The reliable way is to use the <strong>Windows management window</strong>, which uses the same engine, or the command line.</td></tr>
+<tr><td><strong>Remote</strong> installation through a marketplace address</td><td><strong>Not verified</strong> (the folder-based install flow passes its tests)</td></tr>
+<tr><td>Rejection of symbolic-link bundles</td><td>Code review only (this PC lacks permission to create links, so it could not be tested directly)</td></tr>
+<tr><td>Real-world operation of the approval proxy and auto-compact</td><td>Design and bypass tests were done, but <strong>not validated by long-term real operation</strong></td></tr>
+<tr><td>Intermittent failure of the <code>functions</code> test</td><td>There were 2 past failures of unknown cause that did not reproduce in 7 re-runs (recorded in the development notes)</td></tr>
+<tr><td>Herdr's mod terms and distribution conditions</td><td><strong>Not verified</strong> (legal/expert review needed)</td></tr>
+<tr><td>Trademark search</td><td><strong>Not done</strong> (legal/expert review needed)</td></tr>
+<tr><td>Rights-holder notation <code>SoDam AI Studio</code> and whether the holder owns all rights</td><td><strong>Could not be confirmed</strong> (legal/expert review needed)</td></tr>
+<tr><td>Rights in AI-generated output and similarity to existing works</td><td><strong>Not settled</strong> (legal/expert review needed)</td></tr>
+<tr><td>Mac / Linux</td><td>Not supported</td></tr>
+</tbody>
+</table></div>
+<hr>
+<p>Document version: for tool <code>0.1.0</code> · Korean <code>README.md</code>, English <code>README.en.md</code>, and the web pages <code>README.html</code> and <code>README.en.html</code> have the same content (the web pages are generated automatically from the Markdown with <code>node tools\build-readme.mjs</code>).</p>
+</main>
+</body>
+</html>
