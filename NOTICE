@@ -1,0 +1,12 @@
+SoDam Herdr Orchestration Kit
+Copyright 2026 SoDam AI Studio
+
+This product includes software developed by SoDam AI Studio.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This repository does not bundle third-party software. It works together with
+separately installed programs (Node.js, Windows PowerShell, Herdr, Claude Code),
+each of which is governed by its own license and terms. Names such as Herdr,
+Claude, Anthropic, Node.js, Windows, PowerShell and GitHub are trademarks of
+their respective owners and are used only to refer to those products.
