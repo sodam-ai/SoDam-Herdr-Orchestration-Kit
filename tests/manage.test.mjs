@@ -6,11 +6,13 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlin
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawnSync, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { makeCtx, status, roleList, roleSet, roleNew, roleRevert, roleDelete, exportPackage, readPackage, planImport, applyImport, planRestore, applyRestore, backupNow, listBackups, commitChanges, collectUserFiles, runSync, serializeRole, LIMITS, PATH_RE } from '../bin/manage-lib.mjs';
 import { defaultConfig } from '../bin/sync-lib.mjs';
 import { liveWindows } from '../bin/manage-live.mjs';
+import { roleCheck, roleWindowSet, roleWindowClear, roleWindowSeed } from '../bin/manage-check.mjs';
+import { makeWatcher } from '../bin/role-watch.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0, skip = 0;
@@ -604,6 +606,140 @@ await check('(N-1b) manage-live.mjs: hc 호출은 정확히 한 곳이고 인자
   eq((code.match(/spawnSync\(/g) || []).length, 1, 'spawnSync 호출 수'); ok(/spawnSync\(hc, \['ls', '--json'\]/.test(code), '인자가 ls --json 이 아님');
   for (const verb of ['send', 'keys', 'read', 'do', 'label', 'run', 'kill', 'server', 'events', 'get']) ok(!new RegExp(`['"\`]${verb}['"\`]`).test(code), `금지 명령 이름: ${verb}`);
   ok(!/writeFileSync|appendFileSync|mkdirSync|unlinkSync/.test(code), '조회 모듈이 파일을 씀');
+});
+// ======================= 역할 점검: 세션 ID 로 역할과 창을 맞춘다 (K) =======================
+// 문제 상황: 창 주소·탭 안 순서는 복구 때마다 바뀐다(6번 역할 창이 복구되어 탭 맨 끝으로 가면 순서로는 8번이 됨). 세션 ID 만 안 바뀐다.
+const SIDN = (i) => `${String(i).padStart(8, '0')}-1111-4111-8111-${String(i).padStart(12, '0')}`;
+const K_NOW = Date.parse('2026-11-18T04:00:00Z');
+const K_ROWS = [['commander', 'CT-CC-Master', 100], ['approval-proxy', 'CT-CC-Master', 101], ['approval-reviewer', 'CT-CC-1,2,3,4', 110], ['ledger-keeper', 'CT-CC-1,2,3,4', 111], ['verifier', 'CT-CC-1,2,3,4', 112], ['human-tasks', 'CT-CC-1,2,3,4', 113], ['window-inspector', 'CT-CC-5,6,7,8', 120], ['test-dispatcher', 'CT-CC-5,6,7,8', 121], ['doc-consistency', 'CT-CC-5,6,7,8', 122], ['git-keeper', 'CT-CC-5,6,7,8', 123], ['security-guard', 'CT-CC-9,10', 130], ['role-auditor', 'CT-CC-9,10', 131]];
+// opts: drop(창이 없는 역할 id들) · move({역할id: 새 주소 번호}) · ageSec(키퍼 기록 나이) · extra(더 있는 창 [{n,tab,agent}]) · noMap(map 파일 없음)
+function kEnv({ drop = [], move = {}, ageSec = 5, extra = [], noMap = false } = {}) {
+  const ctx = mkHome(); put(ctx, 'config/roles/approval-proxy.md', '---\nenabled: true\n---\n');   // 승인 대행은 기본이 꺼져 있다. 실제 구성처럼 켠다
+  const dir = liveScenario({ terminals: [] }); const mapDir = join(BASE, `kmap${++liveN}`); mkdirSync(mapDir, { recursive: true });
+  const terms = []; const map = {}; const seen = new Date(K_NOW - ageSec * 1000).toISOString();
+  for (const [id, tab, n] of K_ROWS) { if (drop.includes(id)) continue; const a = `t${move[id] ?? n}`; terms.push(T(a, 'idle', `Sp / ${tab}`)); map[a] = { addr: a, where: `Sp / ${tab}`, sid: SIDN(n), seen }; }
+  for (const x of extra) { const a = `t${x.n}`; terms.push(T(a, 'idle', `Sp / ${x.tab}`, { agent: x.agent ?? 'claude-code' })); if (x.agent !== 'powershell.exe') map[a] = { addr: a, where: `Sp / ${x.tab}`, sid: SIDN(x.n), seen }; }
+  writeFileSync(join(dir, 'ls.json'), JSON.stringify({ terminals: terms }));
+  const mapFile = join(mapDir, 'session-map.json'); if (!noMap) writeFileSync(mapFile, JSON.stringify(map));
+  const env = { ...ctx.env, HC_BIN: STUB, FAKE_HC_DIR: dir, ORCH_SESSION_MAP: mapFile };
+  const c2 = makeCtx({ env });
+  return { ctx: c2, dir, mapFile, rc: () => roleCheck(c2, { now: K_NOW }), assignAll: (skip = []) => { for (const [id, , n] of K_ROWS) if (!skip.includes(id)) { const r = roleWindowSet(c2, { id, sid: SIDN(n) }); if (!r.ok) throw new Error(JSON.stringify(r)); } } };
+}
+const stOf = (r, id) => r.roles.find((x) => x.id === id);
+await check('(K-1) 6번 창이 복구되어 탭 맨 끝으로 가도(주소·순서가 달라져도) 세션 ID 로 6번 역할로 확인된다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ move: { 'test-dispatcher': 199 } }); k.assignAll();
+  const r = k.rc(); ok(r.ok && r.available, JSON.stringify(r).slice(0, 300));
+  eq([r.summary.expected, r.summary.ok], [12, 12], '12개 중 12개 정상'); ok(/12개 중 12개 정상/.test(r.headline), r.headline);
+  eq([stOf(r, 'test-dispatcher').status, stOf(r, 'test-dispatcher').address], ['ok', 't199'], '순서가 아니라 세션 ID 로 찾음'); eq(stOf(r, 'git-keeper').address, 't123', '다른 역할은 그대로');
+});
+await check('(K-2) 창이 없는 역할은 "없음"으로, 나머지는 정상으로 센다(누락을 숨기지 않음)', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ drop: ['verifier'] }); k.assignAll();
+  const r = k.rc(); eq([r.summary.ok, r.summary.missing], [11, 1], '개수'); eq(stOf(r, 'verifier').status, 'missing', '검증관'); ok(/없음 1/.test(r.headline), r.headline);
+});
+await check('(K-3) 세션키퍼 기록이 오래됐거나 없으면 "정상"이라 하지 않고 "확인 불가"로 말한다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const old = kEnv({ ageSec: 600 }); old.assignAll(); const a = old.rc();
+  eq([a.summary.ok, a.summary.unknown], [0, 12], '오래된 기록'); ok(a.map.fresh === false && /믿지 않습니다/.test(a.map.note), JSON.stringify(a.map));
+  const none = kEnv({ noMap: true }); none.assignAll(); const b = none.rc();
+  eq([b.summary.ok, b.summary.unknown], [0, 12], '기록 파일 없음'); ok(b.map.available === false, JSON.stringify(b.map));
+});
+await check('(K-4) 아직 배정 안 한 역할: 후보를 보여 주고, "탭에 창 하나·역할 하나"일 때만 추정만(guess)으로 표시한다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const r0 = k.rc();
+  eq([r0.summary.ok, r0.summary.unassigned], [0, 12], '전부 미배정'); eq(stOf(r0, 'human-tasks').candidates.length, 4, '탭의 후보 창 수'); eq(r0.summary.extraWindows, 12, '미배정 창');
+  k.assignAll(['human-tasks']); const r1 = k.rc();
+  eq([stOf(r1, 'human-tasks').status, stOf(r1, 'human-tasks').address], ['guess', 't113'], '하나 남은 창은 추정'); ok(r1.summary.ok === 11 && /추정만 1/.test(r1.headline), r1.headline);
+});
+await check('(K-5) 역할 탭에 배정 안 된 창·빈 셸이 있으면 따로 알려 준다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ extra: [{ n: 140, tab: 'CT-CC-9,10' }, { n: 141, tab: 'CT-CC-9,10', agent: 'powershell.exe' }, { n: 150, tab: '다른탭' }] }); k.assignAll();
+  const r = k.rc(); eq([r.summary.ok, r.summary.extraWindows, r.summary.emptyShells], [12, 1, 1], '개수'); eq(r.extras[0].address, 't140', '미배정 창'); eq(r.emptyShells[0].address, 't141', '빈 셸');
+});
+await check('(K-6) 읽기 전용 증명: hc 는 "ls --json" 만 불리고, 세션키퍼 map 과 대응표 파일은 바이트 동일·대응표는 만들어지지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const before = sha(readFileSync(k.mapFile)); k.rc(); k.rc();
+  eq(calls(k.dir), ['ls --json', 'ls --json'], '호출 기록'); eq(sha(readFileSync(k.mapFile)), before, 'session-map.json');
+  ok(!existsSync(join(k.ctx.paths.config, 'role-windows.json')), '점검이 대응표를 만들었음');
+  const cl = cli('role-check', {}, k.ctx.paths.home, { HC_BIN: STUB, FAKE_HC_DIR: k.dir, ORCH_SESSION_MAP: k.mapFile }); ok(cl.code === 0 && cl.json.ok && cl.json.available && cl.out.trim().split('\n').length === 1, cl.out.slice(0, 200));
+});
+await check('(K-7) 대응표 쓰기: 형식 검증·한 세션은 한 역할에만·직전 본(.prev) 보존·지우기', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const c = k.ctx;
+  ok(!roleWindowSet(c, { id: '../x', sid: SIDN(1) }).ok && !roleWindowSet(c, { id: 'no-such-role', sid: SIDN(1) }).ok, '이상한 역할 id');
+  ok(!roleWindowSet(c, { id: 'verifier', sid: 'not-a-sid' }).ok && !roleWindowSet(c, { id: 'verifier', sid: SIDN(1) + 'x' }).ok, '이상한 세션 ID');
+  ok(!roleWindowSet(c, { id: 'verifier', address: '../etc' }).ok, '이상한 주소');
+  const a = roleWindowSet(c, { id: 'verifier', address: 't112', now: K_NOW }); ok(a.ok && a.sid8 === SIDN(112).slice(0, 8), JSON.stringify(a));   // 주소로 지정하면 키퍼 기록에서 세션 ID 를 찾는다
+  const b = roleWindowSet(c, { id: 'git-keeper', sid: SIDN(112) }); ok(b.ok && b.movedFrom.includes('verifier'), JSON.stringify(b));                    // 같은 세션을 다른 역할에 주면 옮겨 감
+  eq(Object.keys(JSON.parse(read(c, 'config/role-windows.json')).assignments), ['git-keeper'], '한 세션은 한 역할');
+  ok(has(c, 'config/role-windows.json.prev'), '직전 본이 없음');
+  eq([roleWindowClear(c, { id: 'git-keeper' }).removed, roleWindowClear(c, { id: 'git-keeper' }).removed], [true, false], '지우기');
+  const stale = kEnv({ ageSec: 600 }); ok(!roleWindowSet(stale.ctx, { id: 'verifier', address: 't112', now: K_NOW }).ok, '오래된 키퍼 기록으로는 주소 지정 불가');
+  ok(!readdirSync(c.paths.config).some((f) => /\.tmp-/.test(f)), '임시 파일이 남음');
+});
+await check('(K-8) 대응표 파일이 깨졌으면 점검은 그 사실을 알리고, 쓰기는 거절해 깨진 파일을 덮어쓰지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); put(k.ctx, 'config/role-windows.json', '{ 깨진');
+  const r = k.rc(); ok(r.ok && r.available && r.assignmentsFile.error && r.summary.ok === 0, JSON.stringify(r.assignmentsFile));
+  const w = roleWindowSet(k.ctx, { id: 'verifier', sid: SIDN(112) }); ok(!w.ok, '깨진 파일 위에 씀'); eq(read(k.ctx, 'config/role-windows.json'), '{ 깨진', '파일이 바뀜');
+  put(k.ctx, 'config/role-windows.json', JSON.stringify({ version: 1, assignments: { verifier: { sid: '../../x' }, '../bad': { sid: SIDN(1) } } }));
+  eq(k.rc().summary.ok, 0, '이상한 항목은 무시');
+});
+await check('(K-9) 초기 대응표 제안(seed): 제안만 하면 아무것도 안 쓰고, 읽는 파일은 control_dir 의 session-map.json* 으로 제한된다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const cd = join(BASE, 'control'); mkdirSync(cd, { recursive: true });
+  const old = {}; for (const [, tab, n] of K_ROWS) if (tab !== 'CT-CC-Master') old[`t${n - 50}`] = { addr: `t${n - 50}`, where: `Sp / ${tab}`, sid: SIDN(n), seen: '2026-11-13T23:44:32' };
+  writeFileSync(join(cd, 'session-map.json.before-x'), JSON.stringify(old));
+  const plan = roleWindowSeed(k.ctx, { file: 'session-map.json.before-x' }); ok(plan.ok && !plan.applied && plan.pairs.length === 10, JSON.stringify(plan).slice(0, 300));
+  ok(plan.skipped.some((s) => s.tab === 'CT-CC-Master'), '총지휘 탭은 짝이 애매해 건너뜀'); ok(!has(k.ctx, 'config/role-windows.json'), '제안만 했는데 파일이 생김');
+  for (const bad of ['..\\..\\evil.json', 'orchestration.json', 'session-map.json.', 'x/session-map.json.a b']) ok(!roleWindowSeed(k.ctx, { file: bad }).ok, `거절되어야 함: ${bad}`);
+  const ap = roleWindowSeed(k.ctx, { file: 'session-map.json.before-x', apply: true }); ok(ap.ok && ap.applied, JSON.stringify(ap).slice(0, 200));
+  const a = JSON.parse(read(k.ctx, 'config/role-windows.json')).assignments; eq([Object.keys(a).length, a['test-dispatcher'].by, a['test-dispatcher'].sid], [10, 'seed', SIDN(121)], '적용 결과');
+  eq(roleWindowSeed(k.ctx, { file: 'session-map.json.before-x', apply: true }).pairs.length, 0, '이미 배정된 역할은 건드리지 않음');
+});
+// ======================= 역할 감시: 역할 단위로, 바뀔 때만 알린다 (W) =======================
+const RES = (roles, extras = [], available = true) => (available ? { ok: true, available: true, headline: `역할 ${roles.length}개 중 ${roles.filter((r) => r[3] === 'ok').length}개 정상`, roles: roles.map(([id, name, slot, status, address]) => ({ id, name, slot, status, address })), extras: extras.map((a) => ({ address: a })) } : { ok: true, available: false, note: '시험: hc 없음' });
+const W_OK = [['verifier', '검증관', 3, 'ok', 't112'], ['test-dispatcher', '시험 지시', 6, 'ok', 't121']];
+const W_SCRIPT = (seq) => { let i = 0; return () => seq[Math.min(i++, seq.length - 1)]; };
+await check('(W-1) 감시 로직: 처음엔 기준선, 변화는 연속 2번 확인된 뒤에만 알리고, 잠깐 깜빡임은 알리지 않는다', () => {
+  const gone = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'missing', null]];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT([RES(W_OK), RES(W_OK), RES(gone), RES(W_OK), RES(gone), RES(gone), RES(gone)]) });
+  const s1 = w.step(); ok(s1.baseline && /역할 감시 시작 — 역할 2개 중 2개 정상/.test(s1.lines[0]), s1.lines.join('|'));
+  eq(w.step().lines, [], '변화 없음'); eq(w.step().lines, [], '없음 1번 본 것만으로는 알리지 않음'); eq(w.step().lines, [], '곧바로 돌아오면 알리지 않음(깜빡임)');
+  eq(w.step().lines, [], '다시 없음 1번째'); eq(w.step().lines, ['6번 시험 지시: 정상 → 없음'], '없음 2번 연속이면 알림'); eq(w.step().lines, [], '같은 상태는 다시 알리지 않음');
+});
+await check('(W-2) 감시 로직: 복구(없음→정상 + 새 주소)·창 교체·배정 안 된 새 창·점검 불가/재개를 역할 이름으로 알린다', () => {
+  const gone = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'missing', null]];
+  const back = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'ok', 't1br']];
+  const swap = [['verifier', '검증관', 3, 'ok', 't1zz'], back[1]];
+  const run = (seq) => { const w = makeWatcher({ confirm: 1, check: W_SCRIPT(seq) }); return seq.map(() => w.step().lines); };
+  const L = run([RES(gone), RES(back), RES(swap), RES(swap, ['t1new']), RES(swap, []), RES(null, [], false), RES(swap)]);
+  eq(L[1], ['6번 시험 지시: 없음 → 정상 (t1br)'], '복구'); eq(L[2], ['3번 검증관: 창 교체 t112 → t1zz (정상)'], '창 교체');
+  eq(L[3], ['역할 탭에 배정 안 된 새 창: t1new'], '새 창'); eq(L[4], ['배정 안 된 창 사라짐: t1new'], '사라짐');
+  eq(L[5], ['점검 불가: 시험: hc 없음'], '점검 불가'); eq(L[6], ['점검 다시 가능 — 역할 2개 중 2개 정상'], '재개(역할별 알림이 쏟아지지 않음)');
+  eq(makeWatcher({ confirm: 1, check: W_SCRIPT([RES(null, [], false)]) }).step().lines, ['역할 감시 시작 — 점검 불가: 시험: hc 없음'], '처음부터 점검 불가');
+});
+await check('(W-3) 실제 프로세스(가짜 hc): 역할 창이 사라지면 "정상 → 없음", 돌아오면 "없음 → 정상"을 알리고, hc 는 ls --json 만·파일은 안 쓴다', async () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); k.assignAll();
+  const fresh = () => { const m = JSON.parse(readFileSync(k.mapFile, 'utf8')); const s = new Date().toISOString(); for (const v of Object.values(m)) v.seen = s; writeFileSync(k.mapFile, JSON.stringify(m)); };
+  fresh();
+  const full = readFileSync(join(k.dir, 'ls.json'), 'utf8'); const j = JSON.parse(full);
+  const without = JSON.stringify({ terminals: j.terminals.filter((t) => t.address !== 't112') });
+  const homeBefore = treeHash(k.ctx.paths.home);
+  const child = spawn(process.execPath, [join(ROOT, 'bin', 'role-watch.mjs')], { env: { ...k.ctx.env, ROLE_WATCH_MS: '250', ROLE_WATCH_CONFIRM: '2', ROLE_WATCH_FLUSH_MS: '150' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = ''; child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    await sleep(900); ok(/역할 감시 시작 — 역할 12개 중 12개 정상/.test(out), `기준선: ${out}`);
+    writeFileSync(join(k.dir, 'ls.json'), without); await sleep(1800); ok(/3번 검증관: 정상 → 없음/.test(out), `사라짐: ${out}`);
+    fresh(); writeFileSync(join(k.dir, 'ls.json'), full); await sleep(1800); ok(/3번 검증관: 없음 → 정상 \(t112\)/.test(out), `돌아옴: ${out}`);
+  } finally { child.kill(); }
+  await sleep(200);
+  ok(calls(k.dir).length > 3 && calls(k.dir).every((x) => x === 'ls --json'), `hc 호출: ${[...new Set(calls(k.dir))].join(' / ')}`);
+  eq(treeHash(k.ctx.paths.home), homeBefore, '감시가 파일을 씀');
+  ok(!/Error|오류/.test(out.replace(/감시 오류/g, '')), out);
 });
 await check('(N-2) 끝난 뒤: 엔진이 만든 임시 폴더가 남지 않고, 이 PC의 실제 설정은 바이트 동일 (R11)', () => {
   eq(scratchCount(), scratchBefore, '남은 orch-manage-* 임시 폴더');
