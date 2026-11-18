@@ -105,7 +105,8 @@ $tRoles = New-Object System.Windows.Forms.TabPage; $tRoles.Text = '역할 편집
 $tShare = New-Object System.Windows.Forms.TabPage; $tShare.Text = '내보내기 · 불러오기'
 $tBackup = New-Object System.Windows.Forms.TabPage; $tBackup.Text = '백업 · 복구'
 $tLive = New-Object System.Windows.Forms.TabPage; $tLive.Text = '실제 창'
-$tabs.TabPages.AddRange(@($tStatus, $tRoles, $tShare, $tBackup, $tLive))
+$tRoleCk = New-Object System.Windows.Forms.TabPage; $tRoleCk.Text = '역할 점검'
+$tabs.TabPages.AddRange(@($tStatus, $tRoles, $tShare, $tBackup, $tLive, $tRoleCk))
 $bar = New-Object System.Windows.Forms.Label
 $bar.Dock = 'Bottom'; $bar.Height = 26; $bar.TextAlign = 'MiddleLeft'; $bar.Padding = New-Object System.Windows.Forms.Padding(8, 0, 0, 0); $bar.Text = '불러오는 중...'
 $form.Controls.Add($tabs); $form.Controls.Add($bar)
@@ -216,6 +217,17 @@ $btnLvCopy = New-Btn '선택한 창 주소 복사' 480 10 200 34
 $lvTimer = New-Object System.Windows.Forms.Timer; $lvTimer.Interval = 10000
 $lvBottom.Controls.AddRange(@($btnLvRefresh, $chkLvScope, $chkLvAuto, $btnLvCopy))
 $tLive.Controls.Add($lvList); $tLive.Controls.Add($lvBottom); $tLive.Controls.Add($lvSummary); $tLive.Controls.Add($lvHelp)
+# ---- 역할 점검 탭 (읽기 전용: role-check = hc ls --json 조회 + 세션키퍼 기록 읽기만. 어느 창에도 아무것도 보내지 않고 아무것도 쓰지 않음)
+$rcHelp = New-Ctl 'Label' @{ Dock = 'Top'; Height = 48; Padding = (New-Object System.Windows.Forms.Padding(8, 6, 8, 0)); Text = "역할 창이 제대로 있는지 세션 ID 로 확인합니다(주소·탭 순서가 바뀌어도 같은 세션이면 정상). 읽기만 하며 어느 창에도 아무것도 보내지 않습니다.`r`n초록 = 정상, 주황 = 탭 밖·추정만·확인 불가, 빨강 = 없음, 회색 = 배정 안 됨. 탭 이름을 바꾸거나 세션이 복구되면 다음 점검에 바로 반영됩니다." }
+$rcSummary = New-Ctl 'Label' @{ Dock = 'Top'; Height = 30; TextAlign = 'MiddleLeft'; Padding = (New-Object System.Windows.Forms.Padding(8, 0, 0, 0)); Text = '(아직 점검하지 않음)'; Font = New-Object System.Drawing.Font($FontName, 10, [System.Drawing.FontStyle]::Bold) }
+$rcList = New-List @('번호', '역할', '상태', '주소', '세션', '창 상태', '설명') @(60, 190, 100, 70, 90, 90, 480); $rcList.Dock = 'Fill'
+$rcBottom = New-Object System.Windows.Forms.Panel; $rcBottom.Dock = 'Bottom'; $rcBottom.Height = 56
+$btnRcRefresh = New-Btn '새로고침' 10 10 110 34
+$chkRcAuto = New-Ctl 'CheckBox' @{ Text = '15초마다 자동 새로고침'; AutoSize = $true; Location = (Pt 134 18); Checked = $true }
+$rcTimer = New-Object System.Windows.Forms.Timer; $rcTimer.Interval = 15000; $rcTimer.Enabled = $true
+$rcBottom.Controls.AddRange(@($btnRcRefresh, $chkRcAuto))
+$tRoleCk.Controls.Add($rcList); $tRoleCk.Controls.Add($rcBottom); $tRoleCk.Controls.Add($rcSummary); $tRoleCk.Controls.Add($rcHelp)
+
 
 # ---------------------------------------------------------------- 데이터 읽기·그리기
 $script:Status = $null; $script:RoleFull = @{}; $script:Loaded = $null; $script:Backups = @()
@@ -518,7 +530,40 @@ $btnLvCopy.Add_Click({
     if ($lvList.SelectedItems.Count -eq 0) { Say-Box '복사할 창을 목록에서 고르세요.' '확인' 'Warning'; return }
     try { [System.Windows.Forms.Clipboard]::SetText([string]$lvList.SelectedItems[0].Tag); Set-Bar ('주소를 복사했습니다: ' + $lvList.SelectedItems[0].Tag) $ColOk } catch { Say-Box '클립보드에 복사하지 못했습니다.' '확인' 'Warning' }
 })
-$tabs.Add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tLive) { Refresh-Live } })
+$tabs.Add_SelectedIndexChanged({ if ($tabs.SelectedTab -eq $tLive) { Refresh-Live } elseif ($tabs.SelectedTab -eq $tRoleCk) { Refresh-RoleCheck } })
+
+# ---------------------------------------------------------------- 역할 점검(읽기 전용)
+function RoleCk-StatusText([string]$s) { switch ($s) { 'ok' { '정상' } 'moved' { '탭 밖' } 'missing' { '없음' } 'unknown' { '확인 불가' } 'guess' { '추정만' } 'unassigned' { '배정 안 됨' } default { $s } } }
+function Refresh-RoleCheck {
+    $form.Cursor = 'WaitCursor'
+    $rcList.BeginUpdate()
+    try {
+        $rcList.Items.Clear()
+        $r = Call-Manage 'role-check' @{}
+        if (-not $r.ok) { $rcSummary.Text = '점검하지 못했습니다: ' + (Errors-Text $r); $rcSummary.ForeColor = $ColBad; return }
+        if (-not $r.available) { $rcSummary.Text = [string]$r.note; $rcSummary.ForeColor = $ColWarn; return }
+        foreach ($x in @($r.roles)) {
+            $it = New-Object System.Windows.Forms.ListViewItem([string]$x.slot)
+            $note = if ($x.note) { [string]$x.note } else { '' }
+            foreach ($v in @([string]$x.name, (RoleCk-StatusText ([string]$x.status)), [string]$x.address, [string]$x.sid8, (Live-StatusText ([string]$x.windowStatus)), $note)) { [void]$it.SubItems.Add($v) }
+            if ($x.status -eq 'ok') { $it.ForeColor = $ColOk } elseif ($x.status -eq 'missing') { $it.ForeColor = $ColBad } elseif ($x.status -eq 'unassigned') { $it.ForeColor = $ColDim } else { $it.ForeColor = $ColWarn }
+            [void]$rcList.Items.Add($it)
+        }
+        foreach ($e in @($r.extras)) {
+            $it = New-Object System.Windows.Forms.ListViewItem('-')
+            foreach ($v in @('(역할 배정 안 된 새 창)', '새 창', [string]$e.address, [string]$e.sid8, (Live-StatusText ([string]$e.status)), [string]$e.where)) { [void]$it.SubItems.Add($v) }
+            $it.ForeColor = $ColWarn; [void]$rcList.Items.Add($it)
+        }
+        $bad = [int]$r.summary.moved + [int]$r.summary.missing + [int]$r.summary.unknown + [int]$r.summary.guess + [int]$r.summary.unassigned + @($r.extras).Count
+        $kt = ''; $khBad = $false
+        if ($r.keeper -and $r.keeper.present -and $r.keeper.text) { $kt = '  |  ' + [string]$r.keeper.text; $khBad = ([bool]$r.keeper.degraded -or -not [bool]$r.keeper.fresh) }
+        $rcSummary.Text = [string]$r.headline + $kt + '  |  점검 ' + (Get-Date).ToString('HH:mm:ss')
+        $rcSummary.ForeColor = $(if ($bad -eq 0 -and -not $khBad) { $ColOk } elseif ([int]$r.summary.missing -gt 0) { $ColBad } else { $ColWarn })
+    } finally { $rcList.EndUpdate(); $form.Cursor = 'Default' }
+}
+$btnRcRefresh.Add_Click({ Refresh-RoleCheck })
+$chkRcAuto.Add_CheckedChanged({ $rcTimer.Enabled = [bool]$chkRcAuto.Checked })
+$rcTimer.Add_Tick({ if ($tabs.SelectedTab -eq $tRoleCk) { Refresh-RoleCheck } })
 
 # ---------------------------------------------------------------- 시작
 function Start-Main {
@@ -531,8 +576,8 @@ function Start-Main {
         $form.StartPosition = 'Manual'; $form.Location = (Pt -32000 -32000); $form.Show(); [System.Windows.Forms.Application]::DoEvents()
         Refresh-All
         if ($edList.Items.Count -gt 0) { $edList.Items[0].Selected = $true }
-        $names = @('1-status', '2-roles', '3-share', '4-backup', '5-live')
-        for ($i = 0; $i -lt 5; $i++) {
+        $names = @('1-status', '2-roles', '3-share', '4-backup', '5-live', '6-rolecheck')
+        for ($i = 0; $i -lt 6; $i++) {
             $tabs.SelectedIndex = $i; [System.Windows.Forms.Application]::DoEvents()
             $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
             $form.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))

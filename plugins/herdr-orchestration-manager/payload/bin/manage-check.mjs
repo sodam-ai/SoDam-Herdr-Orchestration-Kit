@@ -1,7 +1,7 @@
 // manage-check: "역할 점검" — 기대하는 역할 N개와 지금 떠 있는 창을 세션 ID 로 맞춰 보고, "N개 중 몇 개가 정상인지"를 알려 준다.
 // 왜 세션 ID 인가: 창 주소는 재부팅·복구 때마다 바뀌고, 탭 안의 순서로 역할 번호를 추측하면 틀린다(예: 6번 역할 창이 복구되어 맨 끝에 놓이면 8번으로 읽힘).
 // 세션 ID(claude --resume 에 쓰는 값)만 창이 바뀌어도 변하지 않는다. 그래서 "역할 ↔ 세션 ID" 대응표(config\role-windows.json)를 정본으로 둔다.
-// 읽기 전용 부분: role-check(= hc ls --json 한 번 + 세션키퍼의 session-map.json 읽기). 어느 창에도 아무것도 보내지 않고 session-map.json 을 쓰지 않는다.
+// 읽기 전용 부분: role-check(= hc ls --json 한 번 + 세션키퍼의 session-map.json·keeper-health.json 읽기). 어느 창에도 아무것도 보내지 않고 키퍼 파일을 쓰지 않는다.
 // 쓰는 것은 이 킷 자신의 config\role-windows.json 뿐이다(role-window-set / role-window-clear / role-window-seed). 임시 파일에 쓴 뒤 바꿔치기하고 직전 것을 .prev 로 남긴다.
 import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, renameSync, unlinkSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve, sep, basename } from 'node:path';
@@ -12,7 +12,8 @@ import { liveWindows } from './manage-live.mjs';
 import { loadEffectiveRoles } from './manage-lib.mjs';
 
 const MAP_MAX = 2 * 1024 * 1024;
-const FRESH_MS = 120 * 1000;                       // 세션키퍼는 10초마다 map 을 갱신한다. 이보다 오래된 기록은 "지금 상태"로 믿지 않는다
+const FRESH_MS = 150 * 1000;                       // 기본값 = 세션키퍼 갱신 주기(60초) × 2 + 30초. keeper-health.json 이 있으면 그 intervalSec × 2 + 30초(계약-세션키퍼-상태.md §1). 이보다 오래된 기록은 "지금 상태"로 믿지 않는다
+const freshMsFor = (kh) => ((kh && kh.intervalSec ? kh.intervalSec : 60) * 2 + 30) * 1000;
 const SID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ADDR_RE = /^t[0-9a-z]{1,10}$/;
 const OLD_MAP_RE = /^session-map\.json(\.[A-Za-z0-9._-]{1,80})?$/;
@@ -68,7 +69,7 @@ function parseMapFile(file) {
   return entries;
 }
 export function mapPath(ctx, cfg) { return ctx.env.ORCH_SESSION_MAP || (cfg && cfg.control_dir ? join(cfg.control_dir, 'session-map.json') : null); }
-function readMap(ctx, cfg, nowMs) {
+function readMap(ctx, cfg, nowMs, freshMs = FRESH_MS) {
   const p = mapPath(ctx, cfg);
   if (!p) return { available: false, note: 'session-map.json 위치를 알 수 없습니다(설정의 control_dir 또는 환경변수 ORCH_SESSION_MAP)', entries: new Map(), fresh: false };
   if (!existsSync(p)) return { available: false, note: '세션키퍼의 session-map.json 이 없습니다. 세션키퍼가 켜져 있는지 확인하세요', entries: new Map(), fresh: false };
@@ -76,9 +77,42 @@ function readMap(ctx, cfg, nowMs) {
     const entries = parseMapFile(p);
     let newest = 0; for (const e of entries.values()) if (e.seen && e.seen > newest) newest = e.seen;
     const ageSec = newest ? Math.max(0, Math.round((nowMs - newest) / 1000)) : null;
-    const fresh = newest > 0 && Math.abs(nowMs - newest) <= FRESH_MS;        // 미래 시각(시계 어긋남)도 믿지 않는다
-    return { available: true, entries, fresh, ageSec, note: fresh ? null : `세션키퍼 기록이 ${ageSec === null ? '시각을 알 수 없음' : ageSec + '초 전'}의 것이라 지금 상태로 믿지 않습니다(키퍼가 멈췄을 수 있음)` };
+    const fresh = newest > 0 && Math.abs(nowMs - newest) <= freshMs;        // 미래 시각(시계 어긋남)도 믿지 않는다
+    return { available: true, entries, fresh, freshMs, ageSec, note: fresh ? null : `세션키퍼 기록이 ${ageSec === null ? '시각을 알 수 없음' : ageSec + '초 전'}의 것이라 지금 상태로 믿지 않습니다(키퍼가 멈췄을 수 있음)` };
   } catch (e) { return { available: false, note: `session-map.json 을 읽을 수 없습니다: ${e.message}`, entries: new Map(), fresh: false }; }
+}
+
+// 세션키퍼의 자체 점검 기록(keeper-health.json, 같은 폴더) — 계약-세션키퍼-상태.md v1. 선택 입력, 읽기만. 없거나 깨져도(또는 v 가 1 이 아니면) 점검은 그대로 되고 설명만 줄어든다.
+// 필드: v · at · intervalSec · windows · recognized · ghost · state(ok|warn) · since · reason · recovering · recoverySince. 모르는 필드는 무시한다.
+// 쓰임: (1) distrust(경고이거나 기록이 intervalSec×5(최소 6분) 넘게 낡음)이면 "창이 없다(missing)"고 단정하지 않고 unknown 으로 둔다 (2) recovering 은 role-watch 가 알림을 묶는 데 쓴다 (3) 화면·알림 문구.
+// 주의: recovering 만 바뀔 때는 at 이 그대로라서 "최근 것인가"를 at 으로 판단할 수 없다 → recovering 은 기록이 stale(낡음)이 아닐 때만 믿고, 묶는 시간 상한은 role-watch 가 둔다.
+function readKeeperHealth(ctx, cfg, nowMs) {
+  const none = { present: false, v: null, state: null, degraded: false, stale: false, distrust: false, fresh: false, recovering: false, recoverySince: '', intervalSec: null, windows: null, recognized: null, ghost: null, ageSec: null, reason: '', since: '', text: null, error: null };
+  const mp = mapPath(ctx, cfg);
+  const p = ctx.env.ORCH_KEEPER_HEALTH || (mp ? join(dirname(mp), 'keeper-health.json') : null);
+  if (!p || !existsSync(p)) return none;                                    // 파일이 없으면 옛 키퍼이거나 막 시작한 직후 — 경고로 단정하지 않는다
+  try {
+    const st = statSync(p);
+    if (!st.isFile() || st.size > 64 * 1024) return { ...none, error: '키퍼 점검 기록이 일반 파일이 아니거나 너무 큼' };
+    const j = JSON.parse(readUtf8Strict(p).replace(/^﻿/, ''));
+    if (!j || typeof j !== 'object' || Array.isArray(j)) return { ...none, error: '키퍼 점검 기록 형식이 아님' };
+    if (j.v !== undefined && j.v !== 1) return { ...none, v: j.v, error: `키퍼 점검 기록 형식 v${clip(j.v, 10)} 는 아직 모릅니다(계약 v1 만 읽음)` };
+    const num = (v, min, max) => (Number.isInteger(v) && v >= min && v <= max ? v : null);
+    const intervalSec = num(j.intervalSec, 5, 3600) ?? 60;
+    const at = Date.parse(String(j.at ?? ''));                                // 시간대 없는 값 = 이 PC 의 지역 시각(session-map.json 의 seen 과 같다)
+    const ageSec = Number.isFinite(at) ? Math.max(0, Math.round((nowMs - at) / 1000)) : null;
+    const fresh = Number.isFinite(at) && Math.abs(nowMs - at) <= freshMsFor({ intervalSec });
+    const stale = !Number.isFinite(at) || Math.abs(nowMs - at) > Math.max(intervalSec * 5, 360) * 1000;
+    const windows = num(j.windows, 0, 100000), recognized = num(j.recognized, 0, 100000), ghost = num(j.ghost, 0, 100000);
+    const state = clip(j.state, 20), reason = clip(j.reason, 160), since = clip(j.since, 40);
+    const degraded = state !== '' && state !== 'ok';                          // 계약상 ok|warn. 모르는 값도 "믿지 않는 쪽"으로 다룬다
+    const recovering = !stale && j.recovering === true;
+    const counts = windows !== null && recognized !== null ? ` ${recognized}/${windows}` : '';
+    const text = stale ? `키퍼 점검 기록이 ${ageSec === null ? '시각을 알 수 없는' : ageSec + '초 전'} 것(키퍼가 멈췄을 수 있음)`
+      : degraded ? `키퍼 점검 경고${counts}${state !== 'warn' ? ' [' + state + ']' : ''}${since ? ' (' + since + '부터)' : ''}${reason ? ' — ' + reason : ''}`
+      : `키퍼 ${state === 'ok' ? '정상' : '점검 기록 있음'}${counts}${recovering ? ' (복구 중)' : ''}`;
+    return { present: true, v: 1, state, degraded, stale, distrust: degraded || stale, fresh, recovering, recoverySince: clip(j.recoverySince, 40), intervalSec, windows, recognized, ghost, ageSec, reason, since, text, error: null };
+  } catch (e) { return { ...none, error: `키퍼 점검 기록을 읽을 수 없음: ${e.message}` }; }
 }
 
 function loadPlan(ctx) {
@@ -98,14 +132,16 @@ export function roleCheck(ctx, { now } = {}) {
   const nowMs = Number.isFinite(now) ? now : Date.now();
   const lp = loadPlan(ctx); if (lp.err) return { ok: true, available: false, note: lp.err, roles: [], extras: [], summary: null };
   const live = liveWindows(ctx); if (!live.available) return { ok: true, available: false, note: live.note, roles: [], extras: [], summary: null };
-  const map = readMap(ctx, lp.cfg, nowMs);
+  const kh = readKeeperHealth(ctx, lp.cfg, nowMs);
+  const map = readMap(ctx, lp.cfg, nowMs, freshMsFor(kh));
+  const khWhy = kh.present && kh.distrust ? ` · ${kh.text}` : '';      // 확인이 안 되는 이유를 키퍼 쪽 사실로 덧붙인다(판정은 바꾸지 않음)
   const asg = readAssignments(ctx);
   const prefix = `${lp.cfg.layout.tab_prefix}-`;
 
   const wins = live.windows.map((w) => {
     const { space, tab } = splitWhere(w.where);
     const m = map.entries.get(w.address);
-    const fresh = !!(map.fresh && m && m.seen && Math.abs(nowMs - m.seen) <= FRESH_MS);
+    const fresh = !!(map.fresh && m && m.seen && Math.abs(nowMs - m.seen) <= map.freshMs);
     return { address: w.address, agent: w.agent, status: w.status, turn: w.turn, space, tab, sid: fresh ? m.sid : null, sidKnownStale: !!(m && !fresh), isClaude: w.agent === 'claude-code' };
   });
   const claude = wins.filter((w) => w.isClaude);
@@ -127,10 +163,11 @@ export function roleCheck(ctx, { now } = {}) {
     const a = asg.assignments[en.id];
     if (a) {
       const cannotJudge = !map.available || !map.fresh;
+      const keeperDistrust = kh.present && kh.distrust;                // 키퍼가 Claude 를 못 읽는 상태일 수 있으면 "없음"이라 단정하지 않는다(계약 §3-1)
       // 세션 ID 를 못 읽은 Claude 창이 역할 탭에 있으면 그 창이 이 역할일 수 있다 → "없음"이라 단정하지 않는다.
       // (닫힌 창의 옛 기록이 map 에 남아 있는 것만으로는 판단하지 않는다: hc ls 에 창이 없으면 없는 것이다)
       const unresolved = claude.some((w) => !w.sid && !claimed.has(w.address) && (w.tab === en.tab || w.tab.startsWith(prefix)));
-      result.set(en.id, cannotJudge ? { status: 'unknown', note: map.note ?? '세션키퍼 기록으로 확인할 수 없음', by: a.by } : unresolved ? { status: 'unknown', note: '세션 ID 를 아직 확인하지 못한 창이 역할 탭에 있습니다(복구 직후이거나 세션키퍼가 못 보는 중일 수 있음)', by: a.by } : { status: 'missing', note: '이 세션이 떠 있는 창이 없습니다', by: a.by });
+      result.set(en.id, cannotJudge ? { status: 'unknown', note: (map.note ?? '세션키퍼 기록으로 확인할 수 없음') + khWhy, by: a.by } : keeperDistrust ? { status: 'unknown', note: '이 세션이 떠 있는 창이 보이지 않지만, 키퍼 점검이 믿을 수 없는 상태라 "없음"이라 단정하지 않습니다' + khWhy, by: a.by } : unresolved ? { status: 'unknown', note: '세션 ID 를 아직 확인하지 못한 창이 역할 탭에 있습니다(복구 직후이거나 세션키퍼가 못 보는 중일 수 있음)' + khWhy, by: a.by } : { status: 'missing', note: '이 세션이 떠 있는 창이 없습니다', by: a.by });
     }
   }
   const unassigned = entries.filter((en) => !result.has(en.id));
@@ -153,7 +190,7 @@ export function roleCheck(ctx, { now } = {}) {
   const headline = `역할 ${summary.expected}개 중 ${summary.ok}개 정상` + (bad.length ? ` · ${bad.join(' · ')}` : ' — 전부 확인됨') + (summary.extraWindows ? ` · 역할 미배정 창 ${summary.extraWindows}` : '') + (summary.emptyShells ? ` · 빈 셸 ${summary.emptyShells}` : '');
   const ST = { ok: '정상', moved: '탭 밖', missing: '없음', unknown: '확인 불가', guess: '추정만', unassigned: '배정 안 됨' };
   const lines = roles.map((r) => `${String(r.slot).padStart(2)}번 ${r.name} [${ST[r.status]}]${r.address ? ' ' + r.address : ''}${r.sid8 ? ' (' + r.sid8 + ')' : ''}${r.note ? ' — ' + r.note : ''}`);
-  return { ok: true, available: true, headline, summary, roles, extras, emptyShells: shells, lines, map: { available: map.available, fresh: map.fresh, ageSec: map.ageSec ?? null, note: map.note ?? null }, assignmentsFile: { exists: asg.exists, error: asg.error }, checkedAt: new Date(nowMs).toISOString() };
+  return { ok: true, available: true, headline, summary, roles, extras, emptyShells: shells, lines, map: { available: map.available, fresh: map.fresh, ageSec: map.ageSec ?? null, note: map.note ?? null }, keeper: kh, assignmentsFile: { exists: asg.exists, error: asg.error }, checkedAt: new Date(nowMs).toISOString() };
 }
 
 // ---------- 대응표 쓰기 ----------
@@ -174,9 +211,9 @@ export function roleWindowSet(ctx, { id, sid, address, by, now } = {}) {
   if (s === undefined && address !== undefined) {
     if (!ADDR_RE.test(String(address))) return fail(`창 주소 형식이 아님: ${clip(address, 20)}`);
     const lp = loadPlan(ctx); if (lp.err) return fail(lp.err);
-    const map = readMap(ctx, lp.cfg, nowMs);
+    const map = readMap(ctx, lp.cfg, nowMs, freshMsFor(readKeeperHealth(ctx, lp.cfg, nowMs)));
     const e = map.available ? map.entries.get(String(address)) : null;
-    if (!map.fresh || !e || !e.seen || Math.abs(nowMs - e.seen) > FRESH_MS) return fail(`주소 ${address} 의 세션 ID 를 세션키퍼 기록에서 확인할 수 없습니다(기록이 없거나 오래됨). 세션 ID 를 직접 지정하거나 세션키퍼를 확인하세요`);
+    if (!map.fresh || !e || !e.seen || Math.abs(nowMs - e.seen) > map.freshMs) return fail(`주소 ${address} 의 세션 ID 를 세션키퍼 기록에서 확인할 수 없습니다(기록이 없거나 오래됨). 세션 ID 를 직접 지정하거나 세션키퍼를 확인하세요`);
     s = e.sid;
   }
   if (!SID_RE.test(String(s ?? ''))) return fail('세션 ID 형식이 아님(예: 454a915b-05f9-4f41-8cc5-07c07c506e2e)');

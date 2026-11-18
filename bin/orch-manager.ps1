@@ -555,8 +555,10 @@ function Refresh-RoleCheck {
             $it.ForeColor = $ColWarn; [void]$rcList.Items.Add($it)
         }
         $bad = [int]$r.summary.moved + [int]$r.summary.missing + [int]$r.summary.unknown + [int]$r.summary.guess + [int]$r.summary.unassigned + @($r.extras).Count
-        $rcSummary.Text = [string]$r.headline + '  |  점검 ' + (Get-Date).ToString('HH:mm:ss')
-        $rcSummary.ForeColor = $(if ($bad -eq 0) { $ColOk } elseif ([int]$r.summary.missing -gt 0) { $ColBad } else { $ColWarn })
+        $kt = ''; $khBad = $false
+        if ($r.keeper -and $r.keeper.present -and $r.keeper.text) { $kt = '  |  ' + [string]$r.keeper.text; $khBad = ([bool]$r.keeper.degraded -or -not [bool]$r.keeper.fresh) }
+        $rcSummary.Text = [string]$r.headline + $kt + '  |  점검 ' + (Get-Date).ToString('HH:mm:ss')
+        $rcSummary.ForeColor = $(if ($bad -eq 0 -and -not $khBad) { $ColOk } elseif ([int]$r.summary.missing -gt 0) { $ColBad } else { $ColWarn })
     } finally { $rcList.EndUpdate(); $form.Cursor = 'Default' }
 }
 $btnRcRefresh.Add_Click({ Refresh-RoleCheck })
