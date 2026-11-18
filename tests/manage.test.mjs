@@ -542,7 +542,7 @@ await check('(U-1) 어디서나 실행: 공백·한글·괄호 경로에 실제 
   const shots = join(root, '그림'); mkdirSync(shots, { recursive: true });
   const st = run(['-STA', '-File', join(app, 'bin', 'orch-manager.ps1'), '-SelfTest', '-ShotDir', shots], env);
   ok(/SELFTEST OK roles=13/.test(st.stdout), `창 점검 실패\n${st.stdout}${st.stderr}`.slice(0, 800));
-  for (const f of ['1-status.png', '2-roles.png', '3-share.png', '4-backup.png']) ok(existsSync(join(shots, f)) && lstatSync(join(shots, f)).size > 5000, `그림 ${f} 가 없거나 비어 있음`);
+  for (const f of ['1-status.png', '2-roles.png', '3-share.png', '4-backup.png', '5-live.png', '6-rolecheck.png']) ok(existsSync(join(shots, f)) && lstatSync(join(shots, f)).size > 5000, `그림 ${f} 가 없거나 비어 있음`);
 });
 // ======================= 실제 창 상태: 읽기 전용 (L) =======================
 // 가짜 hc(tests/stub/hc-stub.cs)는 받은 명령을 모두 calls.log 에 적고, ls 만 답한다. 이것으로 "ls --json 외에는 아무것도 안 불렀다"를 증명한다.
