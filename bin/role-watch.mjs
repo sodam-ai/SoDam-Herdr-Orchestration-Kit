@@ -77,7 +77,12 @@ async function main() {
   if (once) return;
   let buf = []; let flushAt = 0;
   const flush = () => { if (buf.length) { for (const l of buf) console.log(`[${hhmmss()}] ${l}`); buf = []; } flushAt = 0; };
+  // 고아 방지: Monitor 가 끝날 때 이 프로세스만 남으면 30분마다 감시가 쌓여 알림이 겹친다. 부모(Monitor 의 셸)가 사라지면 스스로 끝낸다.
+  const ppid = process.ppid;
+  const parentAlive = () => { if (!(ppid > 1)) return true; try { process.kill(ppid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  process.stdout.on('error', () => process.exit(0));   // 출력 파이프가 닫히면 끝낸다
   const tick = () => {
+    if (!parentAlive()) { stop(); return; }
     let r; try { r = w.step(); } catch (e) { r = { lines: [`감시 오류: ${String(e.message).slice(0, 120)}`] }; }
     if (r.lines.length) { buf.push(...r.lines); if (!flushAt) flushAt = Date.now() + flushMs; }
     if (flushAt && Date.now() >= flushAt) flush();

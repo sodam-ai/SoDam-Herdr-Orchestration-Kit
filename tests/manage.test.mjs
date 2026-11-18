@@ -741,6 +741,20 @@ await check('(W-3) 실제 프로세스(가짜 hc): 역할 창이 사라지면 "�
   eq(treeHash(k.ctx.paths.home), homeBefore, '감시가 파일을 씀');
   ok(!/Error|오류/.test(out.replace(/감시 오류/g, '')), out);
 });
+await check('(W-4) 고아 방지: 감시를 켠 부모가 끝나면 감시도 스스로 끝난다(Monitor 만료 뒤 감시가 쌓이지 않게)', async () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); k.assignAll();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  // 부모가 감시를 띄우고 0.8초 뒤 종료. detached 로 띄워야 "부모가 죽어도 자식이 남는" 고아 상황이 된다(분리하지 않으면 Windows 가 자식을 같이 끝내 버려 시험이 아무것도 증명하지 못함)
+  const src = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,[${JSON.stringify(join(ROOT, 'bin', 'role-watch.mjs'))}],{stdio:'ignore',env:process.env,detached:true});c.unref();console.log(c.pid);setTimeout(()=>process.exit(0),800);`;
+  const parent = spawn(process.execPath, ['-e', src], { env: { ...k.ctx.env, ROLE_WATCH_MS: '250', ROLE_WATCH_FLUSH_MS: '150' }, stdio: ['ignore', 'pipe', 'ignore'] });
+  let pid = ''; parent.stdout.on('data', (d) => { pid += d; });
+  await sleep(500); const cpid = Number(String(pid).trim()); ok(cpid > 0 && alive(cpid), `감시가 떠 있어야 함: ${pid}`);
+  let gone = false; for (let i = 0; i < 30 && !gone; i++) { await sleep(200); gone = !alive(cpid); }
+  if (!gone) { try { process.kill(cpid); } catch {} }
+  ok(gone, '부모가 끝났는데 감시가 6초 안에 끝나지 않음(고아)');
+});
 await check('(N-2) 끝난 뒤: 엔진이 만든 임시 폴더가 남지 않고, 이 PC의 실제 설정은 바이트 동일 (R11)', () => {
   eq(scratchCount(), scratchBefore, '남은 orch-manage-* 임시 폴더');
   eq(treeHash(REAL), realBefore, '실제 설정 폴더');
