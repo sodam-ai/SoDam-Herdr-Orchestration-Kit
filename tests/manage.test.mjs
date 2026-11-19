@@ -747,10 +747,12 @@ await check('(W-4) 고아 방지: 감시를 켠 부모가 끝나면 감시도 �
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
   // 부모가 감시를 띄우고 0.8초 뒤 종료. detached 로 띄워야 "부모가 죽어도 자식이 남는" 고아 상황이 된다(분리하지 않으면 Windows 가 자식을 같이 끝내 버려 시험이 아무것도 증명하지 못함)
-  const src = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,[${JSON.stringify(join(ROOT, 'bin', 'role-watch.mjs'))}],{stdio:'ignore',env:process.env,detached:true});c.unref();console.log(c.pid);setTimeout(()=>process.exit(0),800);`;
+  const src = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,[${JSON.stringify(join(ROOT, 'bin', 'role-watch.mjs'))}],{stdio:'ignore',env:process.env,detached:true});c.unref();console.log(c.pid);setTimeout(()=>process.exit(0),2500);`;
   const parent = spawn(process.execPath, ['-e', src], { env: { ...k.ctx.env, ROLE_WATCH_MS: '250', ROLE_WATCH_FLUSH_MS: '150' }, stdio: ['ignore', 'pipe', 'ignore'] });
   let pid = ''; parent.stdout.on('data', (d) => { pid += d; });
-  await sleep(500); const cpid = Number(String(pid).trim()); ok(cpid > 0 && alive(cpid), `감시가 떠 있어야 함: ${pid}`);
+  // PC 가 바쁠 때 node 시작이 느려도 흔들리지 않게 고정 대기 대신 번호가 찍힐 때까지 기다리고(최대 5초), 부모는 번호가 찍힌 뒤에도 2.5초 더 산다
+  for (let i = 0; i < 50 && !String(pid).trim(); i++) await sleep(100);
+  const cpid = Number(String(pid).trim()); ok(cpid > 0 && alive(cpid), `감시가 떠 있어야 함: ${pid}`);
   let gone = false; for (let i = 0; i < 30 && !gone; i++) { await sleep(200); gone = !alive(cpid); }
   if (!gone) { try { process.kill(cpid); } catch {} }
   ok(gone, '부모가 끝났는데 감시가 6초 안에 끝나지 않음(고아)');
