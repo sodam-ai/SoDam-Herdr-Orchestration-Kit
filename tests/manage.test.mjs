@@ -711,11 +711,11 @@ await check('(W-1) 감시 로직: 처음엔 기준선, 변화는 연속 2번 확
 });
 await check('(W-2) 감시 로직: 복구(없음→정상 + 새 주소)·창 교체·배정 안 된 새 창·점검 불가/재개를 역할 이름으로 알린다', () => {
   const gone = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'missing', null]];
-  const back = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'ok', 't1br']];
+  const back = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'ok', 't5y']];
   const swap = [['verifier', '검증관', 3, 'ok', 't1zz'], back[1]];
   const run = (seq) => { const w = makeWatcher({ confirm: 1, check: W_SCRIPT(seq) }); return seq.map(() => w.step().lines); };
   const L = run([RES(gone), RES(back), RES(swap), RES(swap, ['t1new']), RES(swap, []), RES(null, [], false), RES(swap)]);
-  eq(L[1], ['6번 시험 지시: 없음 → 정상 (t1br)'], '복구'); eq(L[2], ['3번 검증관: 창 교체 t112 → t1zz (정상)'], '창 교체');
+  eq(L[1], ['6번 시험 지시: 없음 → 정상 (t5y)'], '복구'); eq(L[2], ['3번 검증관: 창 교체 t112 → t1zz (정상)'], '창 교체');
   eq(L[3], ['역할 탭에 배정 안 된 새 창: t1new'], '새 창'); eq(L[4], ['배정 안 된 창 사라짐: t1new'], '사라짐');
   eq(L[5], ['점검 불가: 시험: hc 없음'], '점검 불가'); eq(L[6], ['점검 다시 가능 — 역할 2개 중 2개 정상'], '재개(역할별 알림이 쏟아지지 않음)');
   eq(makeWatcher({ confirm: 1, check: W_SCRIPT([RES(null, [], false)]) }).step().lines, ['역할 감시 시작 — 점검 불가: 시험: hc 없음'], '처음부터 점검 불가');
