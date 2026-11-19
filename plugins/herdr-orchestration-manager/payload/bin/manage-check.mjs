@@ -69,7 +69,18 @@ function parseMapFile(file) {
   }
   return entries;
 }
-export function mapPath(ctx, cfg) { return ctx.env.ORCH_SESSION_MAP || (cfg && cfg.control_dir ? join(cfg.control_dir, 'session-map.json') : null); }
+// 기록 파일 위치: ① 환경변수 ORCH_SESSION_MAP(명시 지정 — 후보 찾기 없음) ② control_dir ③ control_dir 에 파일이 없을 때만 키퍼 기본 설치 위치(%LOCALAPPDATA%\HerdrSessionKeeper\app, 세션키퍼 README 의 기본값).
+// 어느 쪽이든 낡음·경고 판정은 그대로라서, 엉뚱한 옛 파일을 찾아도 "정상"이 되지 않고 "확인 불가"로 남는다. 키퍼를 -InstallDir 로 다른 곳에 깐 경우는 추측하지 않는다(ORCH_SESSION_MAP 으로 지정).
+export function mapLocation(ctx, cfg) {
+  if (ctx.env.ORCH_SESSION_MAP) return { path: ctx.env.ORCH_SESSION_MAP, source: 'env' };
+  const primary = cfg && cfg.control_dir ? join(cfg.control_dir, 'session-map.json') : null;
+  if (primary && existsSync(primary)) return { path: primary, source: 'control_dir' };
+  const la = ctx.env.LOCALAPPDATA;
+  const alt = la ? join(la, 'HerdrSessionKeeper', 'app', 'session-map.json') : null;
+  if (alt && existsSync(alt)) return { path: alt, source: 'keeper-default' };
+  return { path: primary, source: primary ? 'control_dir' : null };
+}
+export function mapPath(ctx, cfg) { return mapLocation(ctx, cfg).path; }
 function readMap(ctx, cfg, nowMs, freshMs = FRESH_MS) {
   const p = mapPath(ctx, cfg);
   if (!p) return { available: false, note: 'session-map.json 위치를 알 수 없습니다(설정의 control_dir 또는 환경변수 ORCH_SESSION_MAP)', entries: new Map(), fresh: false };
@@ -208,7 +219,7 @@ export function roleCheck(ctx, { now } = {}) {
   const headline = `역할 ${summary.expected}개 중 ${summary.ok}개 정상` + (bad.length ? ` · ${bad.join(' · ')}` : ' — 전부 확인됨') + (summary.extraWindows ? ` · 역할 미배정 창 ${summary.extraWindows}` : '') + (summary.emptyShells ? ` · 빈 셸 ${summary.emptyShells}` : '');
   const ST = { ok: '정상', moved: '탭 밖', missing: '없음', unknown: '확인 불가', guess: '추정만', unassigned: '배정 안 됨' };
   const lines = roles.map((r) => `${String(r.slot).padStart(2)}번 ${r.name} [${ST[r.status]}]${r.address ? ' ' + r.address : ''}${r.sid8 ? ' (' + r.sid8 + ')' : ''}${r.note ? ' — ' + r.note : ''}`);
-  return { ok: true, available: true, headline, summary, roles, extras, emptyShells: shells, lines, map: { available: map.available, fresh: map.fresh, ageSec: map.ageSec ?? null, note: map.note ?? null }, keeper: kh, assignmentsFile: { exists: asg.exists, error: asg.error }, checkedAt: new Date(nowMs).toISOString() };
+  return { ok: true, available: true, headline, summary, roles, extras, emptyShells: shells, lines, map: { available: map.available, fresh: map.fresh, ageSec: map.ageSec ?? null, note: map.note ?? null, source: mapLocation(ctx, lp.cfg).source }, keeper: kh, assignmentsFile: { exists: asg.exists, error: asg.error }, checkedAt: new Date(nowMs).toISOString() };
 }
 
 // ---------- 대응표 쓰기 ----------

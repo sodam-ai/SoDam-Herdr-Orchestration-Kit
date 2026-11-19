@@ -833,6 +833,30 @@ await check('(K-15) 세션 ID 가 바뀐 경우(/clear·새 대화로 열림): "
 });
 const KP = (o = {}) => ({ present: true, stale: false, degraded: false, recovering: false, text: '키퍼 정상 23/23', ...o });
 const RK = (roles, extras, keeper) => ({ ...RES(roles, extras), keeper });
+await check('(K-16) 기록 파일 후보(키퍼 제안): control_dir 에 없을 때만 키퍼 기본 설치 위치를 한 번 더 찾고, 낡음·없음 판정은 그대로다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  // k 의 판정 재료(창·배정)는 그대로 두고, 기록 파일만 "control_dir 은 비어 있고 LOCALAPPDATA 아래 키퍼 기본 위치에 있는" 상황으로 바꾼다. ORCH_SESSION_MAP 은 지운다(지정하면 후보를 찾지 않는 것이 규칙)
+  const mk = (k, { put: putMap, ctrlMap, envMap } = {}) => {
+    const n = ++liveN; const cd = join(BASE, `kcd${n}`); mkdirSync(cd, { recursive: true });
+    const la = join(BASE, `kla${n}`); const app = join(la, 'HerdrSessionKeeper', 'app'); mkdirSync(app, { recursive: true });
+    const j = JSON.parse(read(k.ctx, 'config/orchestration.json')); j.control_dir = cd; put(k.ctx, 'config/orchestration.json', JSON.stringify(j));
+    if (putMap) writeFileSync(join(app, 'session-map.json'), readFileSync(k.mapFile));
+    if (ctrlMap) writeFileSync(join(cd, 'session-map.json'), ctrlMap);
+    const env = { ...k.ctx.env, LOCALAPPDATA: la }; delete env.ORCH_SESSION_MAP; if (envMap) env.ORCH_SESSION_MAP = envMap;
+    const c = makeCtx({ env }); return { app, rc: () => roleCheck(c, { now: K_NOW }) };
+  };
+  const sm = (r) => [r.map.available, r.map.source, r.summary.ok, r.summary.unknown];
+  const k0 = kEnv(); k0.assignAll();
+  eq(sm(mk(k0).rc()), [false, 'control_dir', 0, 12], '어디에도 없으면 옛 동작 그대로: 확인 불가(없음으로 단정하지 않음)');
+  const k1 = kEnv(); k1.assignAll();
+  eq(sm(mk(k1, { put: true }).rc()), [true, 'keeper-default', 12, 0], 'control_dir 에 없고 키퍼 기본 위치에 신선한 기록이 있으면 그것으로 판정');
+  const k2 = kEnv(); k2.assignAll();
+  eq(sm(mk(k2, { put: true, ctrlMap: '{}' }).rc()).slice(0, 2), [true, 'control_dir'], 'control_dir 에 파일이 있으면 그쪽이 먼저(후보로 바꿔치지 않음)');
+  const k3 = kEnv({ ageSec: 600, drop: ['verifier'] }); k3.assignAll();
+  const r3 = mk(k3, { put: true }).rc(); eq([r3.map.source, r3.map.fresh, r3.summary.ok, r3.summary.missing], ['keeper-default', false, 0, 0], '후보의 기록이 낡았으면 믿지 않고, 창이 없어도 "없음"이라 단정하지 않음');
+  const k4 = kEnv(); k4.assignAll();
+  eq(sm(mk(k4, { put: true, envMap: join(BASE, '없는-기록.json') }).rc()), [false, 'env', 0, 12], 'ORCH_SESSION_MAP 을 지정하면 후보를 찾지 않음');
+});
 await check('(W-5) 복구 중에는 창 교체·새 창 알림을 묶고, 끝나고 결과가 안정되면 요약 한 줄만 낸다(C)', () => {
   const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], ['test-dispatcher', '시험 지시', 6, 'ok', 't1yy']];
   const seq = [RK(W_OK, [], KP()),
