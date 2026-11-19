@@ -172,7 +172,7 @@ export function roleCheck(ctx, { now } = {}) {
     const c = claude.filter((w) => !claimed.has(w.address) && w.sid && w.tab === en.tab);
     if (c.length === 1 && lackingByTab.get(en.tab) === 1) {
       claimed.add(c[0].address);
-      return { status: 'guess', win: c[0], by: a.by, note: `세션 ID 가 바뀐 것 같습니다(/clear 나 새 대화일 수 있음): 배정된 세션 ${sid8(a.sid)} 는 보이지 않고 같은 탭에 다른 세션 ${sid8(c[0].sid)} 창이 하나뿐입니다. 맞으면 role-window-set 으로 고치세요` };
+      return { status: 'guess', win: c[0], by: a.by, note: `세션 ID 가 바뀐 것 같습니다(/clear 처럼 의도한 변경이거나 새 대화로 열린 것일 수 있어 오류가 아닐 수 있음): 배정된 세션 ${sid8(a.sid)} 는 보이지 않고 같은 탭에 다른 세션 ${sid8(c[0].sid)} 창이 하나뿐입니다. 맞으면 role-window-set 으로 고치세요` };
     }
     return { status: 'missing', note: '이 세션이 떠 있는 창이 없습니다', by: a.by };
   };
