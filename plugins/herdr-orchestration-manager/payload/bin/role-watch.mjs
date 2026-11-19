@@ -17,7 +17,7 @@ export function snapshot(res) {
   if (!res || res.available === false) return { available: false, why: res && res.note ? String(res.note) : '점검 불가', roles: {}, extras: [] };
   const roles = {}; for (const r of res.roles) roles[r.id] = { name: r.name, slot: r.slot, status: r.status, address: r.address ?? null };
   // 세션키퍼가 "인식 저하"라고 직접 알린 때만 따로 본다(기록이 없거나 오래된 것은 여기서 알리지 않는다: 그건 map 쪽 "점검 불가"가 다룬다)
-  const keeper = res.keeper && res.keeper.present && !res.keeper.stale ? { bad: !!res.keeper.degraded, text: String(res.keeper.text), recovering: !!res.keeper.recovering } : null;
+  const keeper = res.keeper && res.keeper.present && (!res.keeper.stale || res.keeper.recovering) ? { bad: !!res.keeper.degraded, text: String(res.keeper.text), recovering: !!res.keeper.recovering } : null;
   return { available: true, why: null, roles, extras: res.extras.map((e) => e.address).sort(), headline: res.headline, keeper, recovering: !!(keeper && keeper.recovering) };
 }
 

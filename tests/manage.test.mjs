@@ -805,12 +805,29 @@ await check('(K-13) 깨지거나 모르는 형식의 점검 기록은 무시하�
   const k = kEnv(); k.assignAll(); putH(k, '﻿' + JSON.stringify(HEALTH(10))); eq(k.rc().keeper.present, true, 'BOM 이 붙어 있어도 읽음');
   const k2 = kEnv(); k2.assignAll(); putH(k2, JSON.stringify({ ...HEALTH(10), 새필드: 1, windows: 'x' })); const r2 = k2.rc(); ok(r2.keeper.present && r2.keeper.windows === null && /키퍼 정상$/.test(r2.keeper.text), '모르는 필드는 무시, 이상한 값은 비움: ' + JSON.stringify(r2.keeper));
 });
-await check('(K-14) 복구 중 표시(recovering): 기록이 낡지 않았을 때만 믿는다(복구 표시만 바뀌면 at 이 안 바뀌므로 낡음 기준은 5배)', () => {
+await check('(K-14) 복구 중 표시(recovering): 복구 시작 시각(35분 안)으로 믿는다 — 대량 복구 중에는 at 이 갱신되지 않아 낡아 보이기 때문', () => {
   if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
-  const rec = (age) => { const k = kEnv(); k.assignAll(); putH(k, HEALTH(age, { recovering: true, recoverySince: '2026-11-19T06:00:00' })); return k.rc().keeper; };
-  const a = rec(100); eq([a.recovering, a.recoverySince], [true, '2026-11-19T06:00:00'], JSON.stringify(a)); ok(/\(복구 중\)/.test(a.text), a.text);
-  eq(rec(200).recovering, true, '200초 낡음(60초 주기 기준 기록이 늦은 정도)이어도 복구 표시는 믿음');
-  eq(rec(500).recovering, false, '기록이 500초 낡았으면 복구 표시도 믿지 않음');
+  const rec = (age, since) => { const k = kEnv(); k.assignAll(); putH(k, HEALTH(age, { recovering: true, recoverySince: since === undefined ? LOCAL_ISO(K_NOW - 120000) : since })); return k.rc().keeper; };
+  const a = rec(100); eq([a.recovering, a.stale], [true, false], JSON.stringify(a)); ok(/키퍼 복구 중 \(/.test(a.text), a.text);
+  const b = rec(500); eq([b.recovering, b.stale], [true, true], '점검 기록이 500초 낡아도(복구 중 갱신 멈춤) 복구 시작이 2분 전이면 복구 중으로 믿음: ' + JSON.stringify(b)); ok(/복구 중에는 갱신이 늦어짐/.test(b.text), b.text);
+  eq(rec(2000, LOCAL_ISO(K_NOW - 20 * 60000)).recovering, true, '복구가 20분째여도(재시도로 길어진 경우) 믿음');
+  eq(rec(100, LOCAL_ISO(K_NOW - 40 * 60000)).recovering, false, '35분을 넘긴 복구 표시는 키퍼가 비정상 종료해 true 로 남은 것으로 보고 믿지 않음');
+  eq(rec(100, LOCAL_ISO(K_NOW + 3600000)).recovering, false, '미래 시각은 믿지 않음');
+  eq([rec(100, '').recovering, rec(500, '').recovering], [true, false], '시작 시각이 없으면 예전처럼 기록이 낡지 않았을 때만 믿음');
+});
+await check('(K-15) 세션 ID 가 바뀐 경우(/clear·새 대화로 열림): "없음"+"새 창" 오보 대신 추정으로 알리고, 애매하거나 근거가 약하면 추정하지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const NEW1 = 'aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb', NEW2 = 'bbbbbbbb-2222-4222-8222-cccccccccccc';
+  const chg = (pairs, o = {}) => { const k = kEnv(o); k.assignAll(); const m = JSON.parse(readFileSync(k.mapFile, 'utf8')); for (const [addr, sid] of pairs) m[addr].sid = sid; writeFileSync(k.mapFile, JSON.stringify(m)); return k; };
+  const k1 = chg([['t100', NEW1]]); const r1 = k1.rc(); const c = stOf(r1, 'commander');
+  eq([c.status, c.address, r1.summary.guess, r1.summary.missing, r1.extras.length], ['guess', 't100', 1, 0, 0], '총지휘 /clear: ' + JSON.stringify(c)); ok(/세션 ID 가 바뀐 것 같습니다/.test(c.note) && c.note.includes('00000100') && c.note.includes('aaaaaaaa') && /role-window-set/.test(c.note), c.note);
+  ok(/추정만 1/.test(r1.headline) && !/미배정 창/.test(r1.headline), r1.headline);
+  const r2 = chg([['t110', NEW1]]).rc(); eq([stOf(r2, 'approval-reviewer').status, stOf(r2, 'approval-reviewer').address, stOf(r2, 'ledger-keeper').status], ['guess', 't110', 'ok'], '창이 4개인 탭에서 1개만 바뀜');
+  const r3 = chg([['t110', NEW1], ['t111', NEW2]]).rc(); eq([r3.summary.guess, r3.summary.missing, r3.extras.length], [0, 2, 2], '같은 탭에서 둘이 바뀌면 어느 창이 누구인지 알 수 없어 추정하지 않음(기존 판정 유지)');
+  const r4 = chg([['t100', NEW1]], { ageSec: 600 }).rc(); eq([r4.summary.guess, r4.summary.unknown], [0, 12], '키퍼 기록이 낡았으면 추정하지 않음(확인 불가)');
+  const r5 = (() => { const k = kEnv({ drop: ['commander'] }); k.assignAll(); return k.rc(); })(); eq([stOf(r5, 'commander').status, r5.summary.guess], ['missing', 0], '창이 정말 없어진 경우는 그대로 없음');
+  const r6 = (() => { const k = kEnv({ drop: ['commander'], extra: [{ n: 190, tab: 'CT-CC-5,6,7,8' }] }); k.assignAll(); return k.rc(); })(); eq([stOf(r6, 'commander').status, r6.summary.guess], ['missing', 0], '다른 탭의 새 창은 후보가 아님');
+  const wl = roleWindowSet(k1.ctx, { id: 'commander', address: 't100', now: K_NOW }); ok(wl.ok, JSON.stringify(wl)); eq([k1.rc().summary.ok, k1.rc().summary.guess], [12, 0], '안내대로 role-window-set 으로 고치면 정상으로 돌아옴');
 });
 const KP = (o = {}) => ({ present: true, stale: false, degraded: false, recovering: false, text: '키퍼 정상 23/23', ...o });
 const RK = (roles, extras, keeper) => ({ ...RES(roles, extras), keeper });
@@ -839,6 +856,13 @@ await check('(W-6) 복구 표시가 끝나지 않아도 상한(기본 15분)이 
   const wr = makeWatcher({ confirm: 1, check: W_SCRIPT([RK(W_OK, [], KP()), RK(W_OK, [], KP({ degraded: true, text: '키퍼 점검 경고 3/23 — 창 23개 중 3개만 인식' })), RK(W_OK, [], KP()), RK(W_OK, [], KP({ degraded: true, text: 'x' })), RK(W_OK, [], { present: true, stale: true, text: '낡음' })]) });
   wr.step(); eq(wr.step().lines, ['세션키퍼: 키퍼 점검 경고 3/23 — 창 23개 중 3개만 인식'], '경고 시작'); eq(wr.step().lines, ['세션키퍼: 점검 정상으로 돌아옴'], '경고 끝');
   wr.step(); eq(wr.step().lines, ['세션키퍼: 점검 경고 표시가 사라짐(점검 기록이 없거나 오래됨)'], '기록이 낡아 경고를 더는 모름');
+});
+await check('(W-7) 복구 중에는 키퍼 점검 기록이 낡아 보여도(대량 복구 중 갱신 멈춤) 알림을 계속 묶고, 낡았는데 복구 중이 아니면 키퍼 상태를 알림에 쓰지 않는다', () => {
+  const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], ['test-dispatcher', '시험 지시', 6, 'ok', 't1yy']];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT([RK(W_OK, [], KP()), RK(moved, ['t1n1'], KP({ stale: true, recovering: true })), RK(moved, ['t1n1'], KP({ stale: true, recovering: true })), RK(moved, [], KP()), RK(moved, [], KP())]), holdMaxMs: 60000 });
+  const o = [1, 2, 3, 4, 5].map(() => w.step().lines);
+  eq([o[0].length, o[1], o[2], o[3]], [1, [], [], []], '복구 중(기록 낡음)에도 묶음'); ok(o[4].length === 1 && /^세션키퍼 복구가 끝남/.test(o[4][0]), o[4].join('|'));
+  const x = makeWatcher({ confirm: 1, check: W_SCRIPT([RK(W_OK, [], KP()), RK(W_OK, [], KP({ stale: true, degraded: true, text: '낡음' }))]) }); x.step(); eq(x.step().lines, [], '낡았고 복구 중도 아니면 경고로 알리지 않음(그건 map 쪽 점검 불가가 다룸)');
 });
 await check('(N-2) 끝난 뒤: 엔진이 만든 임시 폴더가 남지 않고, 이 PC의 실제 설정은 바이트 동일 (R11)', () => {
   eq(scratchCount(), scratchBefore, '남은 orch-manage-* 임시 폴더');

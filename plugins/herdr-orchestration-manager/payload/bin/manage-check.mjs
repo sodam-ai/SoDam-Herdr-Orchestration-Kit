@@ -12,6 +12,7 @@ import { liveWindows } from './manage-live.mjs';
 import { loadEffectiveRoles } from './manage-lib.mjs';
 
 const MAP_MAX = 2 * 1024 * 1024;
+const RECOVERY_MAX_MS = 35 * 60 * 1000;           // 키퍼 복구 창은 최대 30분(재시도가 있을 때 WindowMin×3). 복구 시작 시각이 이보다 오래됐으면 복구 표시를 믿지 않는다
 const FRESH_MS = 150 * 1000;                       // 기본값 = 세션키퍼 갱신 주기(60초) × 2 + 30초. keeper-health.json 이 있으면 그 intervalSec × 2 + 30초(계약-세션키퍼-상태.md §1). 이보다 오래된 기록은 "지금 상태"로 믿지 않는다
 const freshMsFor = (kh) => ((kh && kh.intervalSec ? kh.intervalSec : 60) * 2 + 30) * 1000;
 const SID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -106,9 +107,14 @@ function readKeeperHealth(ctx, cfg, nowMs) {
     const windows = num(j.windows, 0, 100000), recognized = num(j.recognized, 0, 100000), ghost = num(j.ghost, 0, 100000);
     const state = clip(j.state, 20), reason = clip(j.reason, 160), since = clip(j.since, 40);
     const degraded = state !== '' && state !== 'ok';                          // 계약상 ok|warn. 모르는 값도 "믿지 않는 쪽"으로 다룬다
-    const recovering = !stale && j.recovering === true;
+    // 복구와 기록 갱신은 키퍼의 같은 루프에서 차례로 돈다 → 대량 복구(실측 329초, 재시도 시 최대 30분) 동안 at 이 갱신되지 않아 낡은 것으로 보인다.
+    // 그래서 recovering 은 at 이 아니라 복구 시작 시각(recoverySince)으로 믿는다(35분 안). 시작 시각이 아예 없을 때만 예전처럼 기록이 낡지 않았을 때 믿는다.
+    const rsMs = Date.parse(String(j.recoverySince ?? ''));
+    const rsOk = Number.isFinite(rsMs) && nowMs - rsMs >= -60000 && nowMs - rsMs <= RECOVERY_MAX_MS;
+    const recovering = j.recovering === true && (rsOk || (!Number.isFinite(rsMs) && !stale));
     const counts = windows !== null && recognized !== null ? ` ${recognized}/${windows}` : '';
-    const text = stale ? `키퍼 점검 기록이 ${ageSec === null ? '시각을 알 수 없는' : ageSec + '초 전'} 것(키퍼가 멈췄을 수 있음)`
+    const text = recovering ? `키퍼 복구 중${rsOk ? ' (' + clip(j.recoverySince, 40) + '부터)' : ''}${stale ? ' · 점검 기록이 ' + (ageSec === null ? '시각을 알 수 없는' : ageSec + '초 전') + ' 것(복구 중에는 갱신이 늦어짐)' : counts}`
+      : stale ? `키퍼 점검 기록이 ${ageSec === null ? '시각을 알 수 없는' : ageSec + '초 전'} 것(키퍼가 멈췄을 수 있음)`
       : degraded ? `키퍼 점검 경고${counts}${state !== 'warn' ? ' [' + state + ']' : ''}${since ? ' (' + since + '부터)' : ''}${reason ? ' — ' + reason : ''}`
       : `키퍼 ${state === 'ok' ? '정상' : '점검 기록 있음'}${counts}${recovering ? ' (복구 중)' : ''}`;
     return { present: true, v: 1, state, degraded, stale, distrust: degraded || stale, fresh, recovering, recoverySince: clip(j.recoverySince, 40), intervalSec, windows, recognized, ghost, ageSec, reason, since, text, error: null };
@@ -158,6 +164,18 @@ export function roleCheck(ctx, { now } = {}) {
     const w = bySid.get(a.sid);
     if (w) { claimed.add(w.address); result.set(en.id, { status: w.tab === en.tab || (en.kind !== 'worker' && w.tab.startsWith(prefix)) ? 'ok' : 'moved', win: w, by: a.by, note: w.tab === en.tab || (en.kind !== 'worker' && w.tab.startsWith(prefix)) ? null : `역할 탭이 아닌 곳에 있음: ${w.space} / ${w.tab}` }); }
   }
+  const lackingByTab = new Map();                                       // 1) 뒤에도 창이 정해지지 않은 역할 수(탭별)
+  for (const e2 of entries) if (!result.has(e2.id)) lackingByTab.set(e2.tab, (lackingByTab.get(e2.tab) || 0) + 1);
+  // 세션 ID 가 바뀐 경우(/clear, 복구 때 새 대화로 열림): 배정된 세션은 안 보이는데 같은 탭에 키퍼가 세션 ID 를 확인한 안 묶인 창이 딱 하나이고
+  // 이 탭에서 창이 없는 역할도 이 역할 하나뿐이면 그 창일 가능성이 높다 → "없음"이라 하지 않고 추정으로 알린다(사용자가 중복 복구하지 않게). 확정은 사람이 role-window-set 으로.
+  const missingOrGuess = (en, a) => {
+    const c = claude.filter((w) => !claimed.has(w.address) && w.sid && w.tab === en.tab);
+    if (c.length === 1 && lackingByTab.get(en.tab) === 1) {
+      claimed.add(c[0].address);
+      return { status: 'guess', win: c[0], by: a.by, note: `세션 ID 가 바뀐 것 같습니다(/clear 나 새 대화일 수 있음): 배정된 세션 ${sid8(a.sid)} 는 보이지 않고 같은 탭에 다른 세션 ${sid8(c[0].sid)} 창이 하나뿐입니다. 맞으면 role-window-set 으로 고치세요` };
+    }
+    return { status: 'missing', note: '이 세션이 떠 있는 창이 없습니다', by: a.by };
+  };
   for (const en of entries) {                                           // 2) 배정은 있는데 창이 안 보이는 것 / 배정이 없는 것
     if (result.has(en.id)) continue;
     const a = asg.assignments[en.id];
@@ -167,7 +185,7 @@ export function roleCheck(ctx, { now } = {}) {
       // 세션 ID 를 못 읽은 Claude 창이 역할 탭에 있으면 그 창이 이 역할일 수 있다 → "없음"이라 단정하지 않는다.
       // (닫힌 창의 옛 기록이 map 에 남아 있는 것만으로는 판단하지 않는다: hc ls 에 창이 없으면 없는 것이다)
       const unresolved = claude.some((w) => !w.sid && !claimed.has(w.address) && (w.tab === en.tab || w.tab.startsWith(prefix)));
-      result.set(en.id, cannotJudge ? { status: 'unknown', note: (map.note ?? '세션키퍼 기록으로 확인할 수 없음') + khWhy, by: a.by } : keeperDistrust ? { status: 'unknown', note: '이 세션이 떠 있는 창이 보이지 않지만, 키퍼 점검이 믿을 수 없는 상태라 "없음"이라 단정하지 않습니다' + khWhy, by: a.by } : unresolved ? { status: 'unknown', note: '세션 ID 를 아직 확인하지 못한 창이 역할 탭에 있습니다(복구 직후이거나 세션키퍼가 못 보는 중일 수 있음)' + khWhy, by: a.by } : { status: 'missing', note: '이 세션이 떠 있는 창이 없습니다', by: a.by });
+      result.set(en.id, cannotJudge ? { status: 'unknown', note: (map.note ?? '세션키퍼 기록으로 확인할 수 없음') + khWhy, by: a.by } : keeperDistrust ? { status: 'unknown', note: '이 세션이 떠 있는 창이 보이지 않지만, 키퍼 점검이 믿을 수 없는 상태라 "없음"이라 단정하지 않습니다' + khWhy, by: a.by } : unresolved ? { status: 'unknown', note: '세션 ID 를 아직 확인하지 못한 창이 역할 탭에 있습니다(복구 직후이거나 세션키퍼가 못 보는 중일 수 있음)' + khWhy, by: a.by } : missingOrGuess(en, a));
     }
   }
   const unassigned = entries.filter((en) => !result.has(en.id));
