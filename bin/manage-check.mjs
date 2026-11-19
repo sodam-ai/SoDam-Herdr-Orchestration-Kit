@@ -234,7 +234,7 @@ export function roleWindowSet(ctx, { id, sid, address, by, now } = {}) {
     if (!map.fresh || !e || !e.seen || Math.abs(nowMs - e.seen) > map.freshMs) return fail(`주소 ${address} 의 세션 ID 를 세션키퍼 기록에서 확인할 수 없습니다(기록이 없거나 오래됨). 세션 ID 를 직접 지정하거나 세션키퍼를 확인하세요`);
     s = e.sid;
   }
-  if (!SID_RE.test(String(s ?? ''))) return fail('세션 ID 형식이 아님(예: 454a915b-05f9-4f41-8cc5-07c07c506e2e)');
+  if (!SID_RE.test(String(s ?? ''))) return fail('세션 ID 형식이 아님(예: 12345678-1234-4234-8234-123456789abc)');
   const cur = readAssignments(ctx); if (cur.error) return fail(`기존 대응표를 읽을 수 없어 쓰지 않습니다: ${cur.error}`);
   const next = { ...cur.assignments }; const movedFrom = [];
   for (const [rid, v] of Object.entries(next)) if (v.sid === s && rid !== id) { delete next[rid]; movedFrom.push(rid); }   // 한 세션은 한 역할에만
