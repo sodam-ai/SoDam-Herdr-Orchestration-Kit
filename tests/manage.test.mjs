@@ -6,11 +6,13 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, symlin
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawnSync, execFileSync } from 'node:child_process';
+import { spawnSync, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { makeCtx, status, roleList, roleSet, roleNew, roleRevert, roleDelete, exportPackage, readPackage, planImport, applyImport, planRestore, applyRestore, backupNow, listBackups, commitChanges, collectUserFiles, runSync, serializeRole, LIMITS, PATH_RE } from '../bin/manage-lib.mjs';
 import { defaultConfig } from '../bin/sync-lib.mjs';
 import { liveWindows } from '../bin/manage-live.mjs';
+import { roleCheck, roleWindowSet, roleWindowClear, roleWindowSeed } from '../bin/manage-check.mjs';
+import { makeWatcher } from '../bin/role-watch.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0, skip = 0;
@@ -540,7 +542,7 @@ await check('(U-1) 어디서나 실행: 공백·한글·괄호 경로에 실제 
   const shots = join(root, '그림'); mkdirSync(shots, { recursive: true });
   const st = run(['-STA', '-File', join(app, 'bin', 'orch-manager.ps1'), '-SelfTest', '-ShotDir', shots], env);
   ok(/SELFTEST OK roles=13/.test(st.stdout), `창 점검 실패\n${st.stdout}${st.stderr}`.slice(0, 800));
-  for (const f of ['1-status.png', '2-roles.png', '3-share.png', '4-backup.png']) ok(existsSync(join(shots, f)) && lstatSync(join(shots, f)).size > 5000, `그림 ${f} 가 없거나 비어 있음`);
+  for (const f of ['1-status.png', '2-roles.png', '3-share.png', '4-backup.png', '5-live.png', '6-rolecheck.png']) ok(existsSync(join(shots, f)) && lstatSync(join(shots, f)).size > 5000, `그림 ${f} 가 없거나 비어 있음`);
 });
 // ======================= 실제 창 상태: 읽기 전용 (L) =======================
 // 가짜 hc(tests/stub/hc-stub.cs)는 받은 명령을 모두 calls.log 에 적고, ls 만 답한다. 이것으로 "ls --json 외에는 아무것도 안 불렀다"를 증명한다.
@@ -604,6 +606,305 @@ await check('(N-1b) manage-live.mjs: hc 호출은 정확히 한 곳이고 인자
   eq((code.match(/spawnSync\(/g) || []).length, 1, 'spawnSync 호출 수'); ok(/spawnSync\(hc, \['ls', '--json'\]/.test(code), '인자가 ls --json 이 아님');
   for (const verb of ['send', 'keys', 'read', 'do', 'label', 'run', 'kill', 'server', 'events', 'get']) ok(!new RegExp(`['"\`]${verb}['"\`]`).test(code), `금지 명령 이름: ${verb}`);
   ok(!/writeFileSync|appendFileSync|mkdirSync|unlinkSync/.test(code), '조회 모듈이 파일을 씀');
+});
+// ======================= 역할 점검: 세션 ID 로 역할과 창을 맞춘다 (K) =======================
+// 문제 상황: 창 주소·탭 안 순서는 복구 때마다 바뀐다(6번 역할 창이 복구되어 탭 맨 끝으로 가면 순서로는 8번이 됨). 세션 ID 만 안 바뀐다.
+const SIDN = (i) => `${String(i).padStart(8, '0')}-1111-4111-8111-${String(i).padStart(12, '0')}`;
+const K_NOW = Date.parse('2026-11-18T04:00:00Z');
+const K_ROWS = [['commander', 'CT-CC-Master', 100], ['approval-proxy', 'CT-CC-Master', 101], ['approval-reviewer', 'CT-CC-1,2,3,4', 110], ['ledger-keeper', 'CT-CC-1,2,3,4', 111], ['verifier', 'CT-CC-1,2,3,4', 112], ['human-tasks', 'CT-CC-1,2,3,4', 113], ['window-inspector', 'CT-CC-5,6,7,8', 120], ['test-dispatcher', 'CT-CC-5,6,7,8', 121], ['doc-consistency', 'CT-CC-5,6,7,8', 122], ['git-keeper', 'CT-CC-5,6,7,8', 123], ['security-guard', 'CT-CC-9,10', 130], ['role-auditor', 'CT-CC-9,10', 131]];
+// opts: drop(창이 없는 역할 id들) · move({역할id: 새 주소 번호}) · ageSec(키퍼 기록 나이) · extra(더 있는 창 [{n,tab,agent}]) · noMap(map 파일 없음)
+function kEnv({ drop = [], move = {}, ageSec = 5, extra = [], noMap = false } = {}) {
+  const ctx = mkHome(); put(ctx, 'config/roles/approval-proxy.md', '---\nenabled: true\n---\n');   // 승인 대행은 기본이 꺼져 있다. 실제 구성처럼 켠다
+  const dir = liveScenario({ terminals: [] }); const mapDir = join(BASE, `kmap${++liveN}`); mkdirSync(mapDir, { recursive: true });
+  const terms = []; const map = {}; const seen = new Date(K_NOW - ageSec * 1000).toISOString();
+  for (const [id, tab, n] of K_ROWS) { if (drop.includes(id)) continue; const a = `t${move[id] ?? n}`; terms.push(T(a, 'idle', `Sp / ${tab}`)); map[a] = { addr: a, where: `Sp / ${tab}`, sid: SIDN(n), seen }; }
+  for (const x of extra) { const a = `t${x.n}`; terms.push(T(a, 'idle', `Sp / ${x.tab}`, { agent: x.agent ?? 'claude-code' })); if (x.agent !== 'powershell.exe') map[a] = { addr: a, where: `Sp / ${x.tab}`, sid: SIDN(x.n), seen }; }
+  writeFileSync(join(dir, 'ls.json'), JSON.stringify({ terminals: terms }));
+  const mapFile = join(mapDir, 'session-map.json'); if (!noMap) writeFileSync(mapFile, JSON.stringify(map));
+  const env = { ...ctx.env, HC_BIN: STUB, FAKE_HC_DIR: dir, ORCH_SESSION_MAP: mapFile };
+  const c2 = makeCtx({ env });
+  return { ctx: c2, dir, mapFile, rc: () => roleCheck(c2, { now: K_NOW }), assignAll: (skip = []) => { for (const [id, , n] of K_ROWS) if (!skip.includes(id)) { const r = roleWindowSet(c2, { id, sid: SIDN(n) }); if (!r.ok) throw new Error(JSON.stringify(r)); } } };
+}
+const stOf = (r, id) => r.roles.find((x) => x.id === id);
+await check('(K-1) 6번 창이 복구되어 탭 맨 끝으로 가도(주소·순서가 달라져도) 세션 ID 로 6번 역할로 확인된다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ move: { 'test-dispatcher': 199 } }); k.assignAll();
+  const r = k.rc(); ok(r.ok && r.available, JSON.stringify(r).slice(0, 300));
+  eq([r.summary.expected, r.summary.ok], [12, 12], '12개 중 12개 정상'); ok(/12개 중 12개 정상/.test(r.headline), r.headline);
+  eq([stOf(r, 'test-dispatcher').status, stOf(r, 'test-dispatcher').address], ['ok', 't199'], '순서가 아니라 세션 ID 로 찾음'); eq(stOf(r, 'git-keeper').address, 't123', '다른 역할은 그대로');
+});
+await check('(K-2) 창이 없는 역할은 "없음"으로, 나머지는 정상으로 센다(누락을 숨기지 않음)', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ drop: ['verifier'] }); k.assignAll();
+  const r = k.rc(); eq([r.summary.ok, r.summary.missing], [11, 1], '개수'); eq(stOf(r, 'verifier').status, 'missing', '검증관'); ok(/없음 1/.test(r.headline), r.headline);
+});
+await check('(K-3) 세션키퍼 기록이 오래됐거나 없으면 "정상"이라 하지 않고 "확인 불가"로 말한다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const old = kEnv({ ageSec: 600 }); old.assignAll(); const a = old.rc();
+  eq([a.summary.ok, a.summary.unknown], [0, 12], '오래된 기록'); ok(a.map.fresh === false && /믿지 않습니다/.test(a.map.note), JSON.stringify(a.map));
+  const none = kEnv({ noMap: true }); none.assignAll(); const b = none.rc();
+  eq([b.summary.ok, b.summary.unknown], [0, 12], '기록 파일 없음'); ok(b.map.available === false, JSON.stringify(b.map));
+});
+await check('(K-4) 아직 배정 안 한 역할: 후보를 보여 주고, "탭에 창 하나·역할 하나"일 때만 추정만(guess)으로 표시한다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const r0 = k.rc();
+  eq([r0.summary.ok, r0.summary.unassigned], [0, 12], '전부 미배정'); eq(stOf(r0, 'human-tasks').candidates.length, 4, '탭의 후보 창 수'); eq(r0.summary.extraWindows, 12, '미배정 창');
+  k.assignAll(['human-tasks']); const r1 = k.rc();
+  eq([stOf(r1, 'human-tasks').status, stOf(r1, 'human-tasks').address], ['guess', 't113'], '하나 남은 창은 추정'); ok(r1.summary.ok === 11 && /추정만 1/.test(r1.headline), r1.headline);
+});
+await check('(K-5) 역할 탭에 배정 안 된 창·빈 셸이 있으면 따로 알려 준다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv({ extra: [{ n: 140, tab: 'CT-CC-9,10' }, { n: 141, tab: 'CT-CC-9,10', agent: 'powershell.exe' }, { n: 150, tab: '다른탭' }] }); k.assignAll();
+  const r = k.rc(); eq([r.summary.ok, r.summary.extraWindows, r.summary.emptyShells], [12, 1, 1], '개수'); eq(r.extras[0].address, 't140', '미배정 창'); eq(r.emptyShells[0].address, 't141', '빈 셸');
+});
+await check('(K-6) 읽기 전용 증명: hc 는 "ls --json" 만 불리고, 세션키퍼 map 과 대응표 파일은 바이트 동일·대응표는 만들어지지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const before = sha(readFileSync(k.mapFile)); k.rc(); k.rc();
+  eq(calls(k.dir), ['ls --json', 'ls --json'], '호출 기록'); eq(sha(readFileSync(k.mapFile)), before, 'session-map.json');
+  ok(!existsSync(join(k.ctx.paths.config, 'role-windows.json')), '점검이 대응표를 만들었음');
+  const cl = cli('role-check', {}, k.ctx.paths.home, { HC_BIN: STUB, FAKE_HC_DIR: k.dir, ORCH_SESSION_MAP: k.mapFile }); ok(cl.code === 0 && cl.json.ok && cl.json.available && cl.out.trim().split('\n').length === 1, cl.out.slice(0, 200));
+});
+await check('(K-7) 대응표 쓰기: 형식 검증·한 세션은 한 역할에만·직전 본(.prev) 보존·지우기', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const c = k.ctx;
+  ok(!roleWindowSet(c, { id: '../x', sid: SIDN(1) }).ok && !roleWindowSet(c, { id: 'no-such-role', sid: SIDN(1) }).ok, '이상한 역할 id');
+  ok(!roleWindowSet(c, { id: 'verifier', sid: 'not-a-sid' }).ok && !roleWindowSet(c, { id: 'verifier', sid: SIDN(1) + 'x' }).ok, '이상한 세션 ID');
+  ok(!roleWindowSet(c, { id: 'verifier', address: '../etc' }).ok, '이상한 주소');
+  const a = roleWindowSet(c, { id: 'verifier', address: 't112', now: K_NOW }); ok(a.ok && a.sid8 === SIDN(112).slice(0, 8), JSON.stringify(a));   // 주소로 지정하면 키퍼 기록에서 세션 ID 를 찾는다
+  const b = roleWindowSet(c, { id: 'git-keeper', sid: SIDN(112) }); ok(b.ok && b.movedFrom.includes('verifier'), JSON.stringify(b));                    // 같은 세션을 다른 역할에 주면 옮겨 감
+  eq(Object.keys(JSON.parse(read(c, 'config/role-windows.json')).assignments), ['git-keeper'], '한 세션은 한 역할');
+  ok(has(c, 'config/role-windows.json.prev'), '직전 본이 없음');
+  eq([roleWindowClear(c, { id: 'git-keeper' }).removed, roleWindowClear(c, { id: 'git-keeper' }).removed], [true, false], '지우기');
+  const stale = kEnv({ ageSec: 600 }); ok(!roleWindowSet(stale.ctx, { id: 'verifier', address: 't112', now: K_NOW }).ok, '오래된 키퍼 기록으로는 주소 지정 불가');
+  ok(!readdirSync(c.paths.config).some((f) => /\.tmp-/.test(f)), '임시 파일이 남음');
+});
+await check('(K-8) 대응표 파일이 깨졌으면 점검은 그 사실을 알리고, 쓰기는 거절해 깨진 파일을 덮어쓰지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); put(k.ctx, 'config/role-windows.json', '{ 깨진');
+  const r = k.rc(); ok(r.ok && r.available && r.assignmentsFile.error && r.summary.ok === 0, JSON.stringify(r.assignmentsFile));
+  const w = roleWindowSet(k.ctx, { id: 'verifier', sid: SIDN(112) }); ok(!w.ok, '깨진 파일 위에 씀'); eq(read(k.ctx, 'config/role-windows.json'), '{ 깨진', '파일이 바뀜');
+  put(k.ctx, 'config/role-windows.json', JSON.stringify({ version: 1, assignments: { verifier: { sid: '../../x' }, '../bad': { sid: SIDN(1) } } }));
+  eq(k.rc().summary.ok, 0, '이상한 항목은 무시');
+});
+await check('(K-9) 초기 대응표 제안(seed): 제안만 하면 아무것도 안 쓰고, 읽는 파일은 control_dir 의 session-map.json* 으로 제한된다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); const cd = join(BASE, 'control'); mkdirSync(cd, { recursive: true });
+  const old = {}; for (const [, tab, n] of K_ROWS) if (tab !== 'CT-CC-Master') old[`t${n - 50}`] = { addr: `t${n - 50}`, where: `Sp / ${tab}`, sid: SIDN(n), seen: '2026-11-13T23:44:32' };
+  writeFileSync(join(cd, 'session-map.json.before-x'), JSON.stringify(old));
+  const plan = roleWindowSeed(k.ctx, { file: 'session-map.json.before-x' }); ok(plan.ok && !plan.applied && plan.pairs.length === 10, JSON.stringify(plan).slice(0, 300));
+  ok(plan.skipped.some((s) => s.tab === 'CT-CC-Master'), '총지휘 탭은 짝이 애매해 건너뜀'); ok(!has(k.ctx, 'config/role-windows.json'), '제안만 했는데 파일이 생김');
+  for (const bad of ['..\\..\\evil.json', 'orchestration.json', 'session-map.json.', 'x/session-map.json.a b']) ok(!roleWindowSeed(k.ctx, { file: bad }).ok, `거절되어야 함: ${bad}`);
+  const ap = roleWindowSeed(k.ctx, { file: 'session-map.json.before-x', apply: true }); ok(ap.ok && ap.applied, JSON.stringify(ap).slice(0, 200));
+  const a = JSON.parse(read(k.ctx, 'config/role-windows.json')).assignments; eq([Object.keys(a).length, a['test-dispatcher'].by, a['test-dispatcher'].sid], [10, 'seed', SIDN(121)], '적용 결과');
+  eq(roleWindowSeed(k.ctx, { file: 'session-map.json.before-x', apply: true }).pairs.length, 0, '이미 배정된 역할은 건드리지 않음');
+});
+// ======================= 역할 감시: 역할 단위로, 바뀔 때만 알린다 (W) =======================
+const RES = (roles, extras = [], available = true) => (available ? { ok: true, available: true, headline: `역할 ${roles.length}개 중 ${roles.filter((r) => r[3] === 'ok').length}개 정상`, roles: roles.map(([id, name, slot, status, address]) => ({ id, name, slot, status, address })), extras: extras.map((a) => ({ address: a })) } : { ok: true, available: false, note: '시험: hc 없음' });
+const W_OK = [['verifier', '검증관', 3, 'ok', 't112'], ['test-dispatcher', '시험 지시', 6, 'ok', 't121']];
+const W_SCRIPT = (seq) => { let i = 0; return () => seq[Math.min(i++, seq.length - 1)]; };
+await check('(W-1) 감시 로직: 처음엔 기준선, 변화는 연속 2번 확인된 뒤에만 알리고, 잠깐 깜빡임은 알리지 않는다', () => {
+  const gone = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'missing', null]];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT([RES(W_OK), RES(W_OK), RES(gone), RES(W_OK), RES(gone), RES(gone), RES(gone)]) });
+  const s1 = w.step(); ok(s1.baseline && /역할 감시 시작 — 역할 2개 중 2개 정상/.test(s1.lines[0]), s1.lines.join('|'));
+  eq(w.step().lines, [], '변화 없음'); eq(w.step().lines, [], '없음 1번 본 것만으로는 알리지 않음'); eq(w.step().lines, [], '곧바로 돌아오면 알리지 않음(깜빡임)');
+  eq(w.step().lines, [], '다시 없음 1번째'); eq(w.step().lines, ['6번 시험 지시: 정상 → 없음'], '없음 2번 연속이면 알림'); eq(w.step().lines, [], '같은 상태는 다시 알리지 않음');
+});
+await check('(W-2) 감시 로직: 복구(없음→정상 + 새 주소)·창 교체·배정 안 된 새 창·점검 불가/재개를 역할 이름으로 알린다', () => {
+  const gone = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'missing', null]];
+  const back = [W_OK[0], ['test-dispatcher', '시험 지시', 6, 'ok', 't5y']];
+  const swap = [['verifier', '검증관', 3, 'ok', 't1zz'], back[1]];
+  const run = (seq) => { const w = makeWatcher({ confirm: 1, check: W_SCRIPT(seq) }); return seq.map(() => w.step().lines); };
+  const L = run([RES(gone), RES(back), RES(swap), RES(swap, ['t1new']), RES(swap, []), RES(null, [], false), RES(swap)]);
+  eq(L[1], ['6번 시험 지시: 없음 → 정상 (t5y)'], '복구'); eq(L[2], ['3번 검증관: 창 교체 t112 → t1zz (정상)'], '창 교체');
+  eq(L[3], ['역할 탭에 배정 안 된 새 창: t1new'], '새 창'); eq(L[4], ['배정 안 된 창 사라짐: t1new'], '사라짐');
+  eq(L[5], ['점검 불가: 시험: hc 없음'], '점검 불가'); eq(L[6], ['점검 다시 가능 — 역할 2개 중 2개 정상'], '재개(역할별 알림이 쏟아지지 않음)');
+  eq(makeWatcher({ confirm: 1, check: W_SCRIPT([RES(null, [], false)]) }).step().lines, ['역할 감시 시작 — 점검 불가: 시험: hc 없음'], '처음부터 점검 불가');
+});
+await check('(W-3) 실제 프로세스(가짜 hc): 역할 창이 사라지면 "정상 → 없음", 돌아오면 "없음 → 정상"을 알리고, hc 는 ls --json 만·파일은 안 쓴다', async () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); k.assignAll();
+  const fresh = () => { const m = JSON.parse(readFileSync(k.mapFile, 'utf8')); const s = new Date().toISOString(); for (const v of Object.values(m)) v.seen = s; writeFileSync(k.mapFile, JSON.stringify(m)); };
+  fresh();
+  const full = readFileSync(join(k.dir, 'ls.json'), 'utf8'); const j = JSON.parse(full);
+  const without = JSON.stringify({ terminals: j.terminals.filter((t) => t.address !== 't112') });
+  const homeBefore = treeHash(k.ctx.paths.home);
+  const child = spawn(process.execPath, [join(ROOT, 'bin', 'role-watch.mjs')], { env: { ...k.ctx.env, ROLE_WATCH_MS: '250', ROLE_WATCH_CONFIRM: '2', ROLE_WATCH_FLUSH_MS: '150' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = ''; child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    await sleep(900); ok(/역할 감시 시작 — 역할 12개 중 12개 정상/.test(out), `기준선: ${out}`);
+    writeFileSync(join(k.dir, 'ls.json'), without); await sleep(1800); ok(/3번 검증관: 정상 → 없음/.test(out), `사라짐: ${out}`);
+    fresh(); writeFileSync(join(k.dir, 'ls.json'), full); await sleep(1800); ok(/3번 검증관: 없음 → 정상 \(t112\)/.test(out), `돌아옴: ${out}`);
+  } finally { child.kill(); }
+  await sleep(200);
+  ok(calls(k.dir).length > 3 && calls(k.dir).every((x) => x === 'ls --json'), `hc 호출: ${[...new Set(calls(k.dir))].join(' / ')}`);
+  eq(treeHash(k.ctx.paths.home), homeBefore, '감시가 파일을 씀');
+  ok(!/Error|오류/.test(out.replace(/감시 오류/g, '')), out);
+});
+await check('(W-4) 고아 방지: 감시를 켠 부모가 끝나면 감시도 스스로 끝난다(Monitor 만료 뒤 감시가 쌓이지 않게)', async () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); k.assignAll();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+  // 부모가 감시를 띄우고 0.8초 뒤 종료. detached 로 띄워야 "부모가 죽어도 자식이 남는" 고아 상황이 된다(분리하지 않으면 Windows 가 자식을 같이 끝내 버려 시험이 아무것도 증명하지 못함)
+  const src = `const {spawn}=require('node:child_process');const c=spawn(process.execPath,[${JSON.stringify(join(ROOT, 'bin', 'role-watch.mjs'))}],{stdio:'ignore',env:process.env,detached:true});c.unref();console.log(c.pid);setTimeout(()=>process.exit(0),2500);`;
+  const parent = spawn(process.execPath, ['-e', src], { env: { ...k.ctx.env, ROLE_WATCH_MS: '250', ROLE_WATCH_FLUSH_MS: '150' }, stdio: ['ignore', 'pipe', 'ignore'] });
+  let pid = ''; parent.stdout.on('data', (d) => { pid += d; });
+  // PC 가 바쁠 때 node 시작이 느려도 흔들리지 않게 고정 대기 대신 번호가 찍힐 때까지 기다리고(최대 5초), 부모는 번호가 찍힌 뒤에도 2.5초 더 산다
+  for (let i = 0; i < 50 && !String(pid).trim(); i++) await sleep(100);
+  const cpid = Number(String(pid).trim()); ok(cpid > 0 && alive(cpid), `감시가 떠 있어야 함: ${pid}`);
+  let gone = false; for (let i = 0; i < 30 && !gone; i++) { await sleep(200); gone = !alive(cpid); }
+  if (!gone) { try { process.kill(cpid); } catch {} }
+  ok(gone, '부모가 끝났는데 감시가 6초 안에 끝나지 않음(고아)');
+});
+// ======================= 세션키퍼 계약 v1: keeper-health.json (K-10~K-14, W-5~W-6) =======================
+// 계약-세션키퍼-상태.md: 갱신 주기 60초 → 낡음 기준 intervalSec×2+30초(A) · state=warn 이거나 기록이 intervalSec×5(최소 6분) 넘게 낡으면 "없음"으로 단정하지 않음(B) · recovering 동안 알림 묶기(C)
+const LOCAL_ISO = (ms) => { const d = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };   // 계약: 시간대 표시 없는 지역 시각
+const HEALTH = (ageSec, o = {}) => ({ v: 1, at: LOCAL_ISO(K_NOW - ageSec * 1000), intervalSec: 60, windows: 23, recognized: 23, ghost: 0, state: 'ok', since: '', reason: '', recovering: false, recoverySince: '', ...o });
+const healthFile = (k) => join(dirname(k.mapFile), 'keeper-health.json');
+const putH = (k, obj) => writeFileSync(healthFile(k), typeof obj === 'string' || Buffer.isBuffer(obj) ? obj : JSON.stringify(obj));
+await check('(K-10) 키퍼 점검 기록이 정상이면 보여 주기만 한다: 판정은 그대로이고, 키퍼 파일은 읽기만 한다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const k = kEnv(); k.assignAll(); const before = k.rc();
+  eq([before.keeper.present, before.keeper.text], [false, null], '기록 파일이 없으면 옛 키퍼로 보고 경고로 단정하지 않음');
+  putH(k, HEALTH(10)); const hb = sha(readFileSync(healthFile(k))), mb = sha(readFileSync(k.mapFile));
+  const r = k.rc();
+  eq([r.keeper.present, r.keeper.text, r.keeper.distrust, r.keeper.recovering, r.keeper.intervalSec], [true, '키퍼 정상 23/23', false, false, 60], JSON.stringify(r.keeper));
+  eq([r.headline, r.summary.ok], [before.headline, 12], '판정은 기록 유무로 달라지지 않음');
+  eq([sha(readFileSync(healthFile(k))), sha(readFileSync(k.mapFile))], [hb, mb], '키퍼 파일을 건드림');
+});
+await check('(K-11) 낡음 기준(A): 기본 150초(= 갱신 주기 60초×2+30), 기록에 intervalSec 가 있으면 그 값×2+30초', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const t = (age, h) => { const k = kEnv({ ageSec: age }); k.assignAll(); if (h) putH(k, h); return k.rc().summary; };
+  eq([t(140).ok, t(140).unknown], [12, 0], '140초 전 기록은 아직 믿음(옛 기준 120초였다면 확인 불가가 됐을 것)');
+  eq([t(160).ok, t(160).unknown], [0, 12], '160초 전 기록은 믿지 않음');
+  eq(t(200, HEALTH(10, { intervalSec: 120 })).ok, 12, '주기 120초면 270초까지 믿음');
+  eq(t(200).ok, 0, '같은 200초라도 기록이 없으면 기본 150초 기준이라 믿지 않음');
+  eq(t(160, HEALTH(10, { intervalSec: 1 })).ok, 0, '말이 안 되는 주기(1초)는 무시하고 60초로 봄');
+});
+await check('(K-12) 키퍼가 경고이거나 점검 기록이 낡았으면 창이 안 보여도 "없음"이라 단정하지 않는다(B)', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const st = (h) => { const k = kEnv({ drop: ['verifier'] }); k.assignAll(); if (h !== undefined) putH(k, h); const r = k.rc(); return [stOf(r, 'verifier'), r.summary]; };
+  eq(st()[0].status, 'missing', '기록 없음 = 옛 키퍼: 지금까지처럼 "없음"');
+  eq(st(HEALTH(10))[0].status, 'missing', '키퍼 정상이면 "없음"');
+  const w = st(HEALTH(10, { state: 'warn', since: '2026-11-19T05:00:00', reason: '창 23개 중 0개만 인식', recognized: 0 }));
+  eq(w[0].status, 'unknown', '키퍼 경고'); ok(/키퍼 점검 경고 0\/23/.test(w[0].note) && /창 23개 중 0개만 인식/.test(w[0].note), w[0].note); eq(w[1].ok, 11, '나머지 역할 판정은 그대로');
+  eq(st(HEALTH(500))[0].status, 'unknown', '점검 기록이 500초(>360초) 낡음'); ok(/멈췄을 수 있음/.test(st(HEALTH(500))[0].note), st(HEALTH(500))[0].note);
+  eq(st(HEALTH(200))[0].status, 'missing', '200초 낡음은 아직 경고 아님');
+  eq(st(HEALTH(500, { intervalSec: 120 }))[0].status, 'missing', '주기 120초면 600초까지는 낡음이 아님');
+  eq(st(HEALTH(700, { intervalSec: 120 }))[0].status, 'unknown', '주기 120초의 5배(600초) 넘게 낡음');
+  eq(st(HEALTH(10, { state: 'mystery' }))[0].status, 'unknown', '모르는 state 값은 믿지 않는 쪽');
+});
+await check('(K-13) 깨지거나 모르는 형식의 점검 기록은 무시하고(점검은 그대로) 이유만 남긴다 — 점검이 죽지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const bad = ['{bad', '[]', '"x"', JSON.stringify(HEALTH(10, { v: 2 })), Buffer.from([0xff, 0xfe, 0x41]), 'x'.repeat(70 * 1024)];
+  for (const h of bad) {
+    const k = kEnv({ drop: ['verifier'] }); k.assignAll(); putH(k, h);
+    let r; try { r = k.rc(); } catch (e) { ok(false, `예외: ${e.message}`); }
+    ok(r.ok && r.available && r.keeper.present === false && r.keeper.error, `무시해야 함: ${String(h).slice(0, 20)} → ${JSON.stringify(r.keeper)}`);
+    eq(stOf(r, 'verifier').status, 'missing', '기록이 쓸모없으면 옛 키퍼와 같은 판정');
+  }
+  const k = kEnv(); k.assignAll(); putH(k, '﻿' + JSON.stringify(HEALTH(10))); eq(k.rc().keeper.present, true, 'BOM 이 붙어 있어도 읽음');
+  const k2 = kEnv(); k2.assignAll(); putH(k2, JSON.stringify({ ...HEALTH(10), 새필드: 1, windows: 'x' })); const r2 = k2.rc(); ok(r2.keeper.present && r2.keeper.windows === null && /키퍼 정상$/.test(r2.keeper.text), '모르는 필드는 무시, 이상한 값은 비움: ' + JSON.stringify(r2.keeper));
+});
+await check('(K-14) 복구 중 표시(recovering): 복구 시작 시각(35분 안)으로 믿는다 — 대량 복구 중에는 at 이 갱신되지 않아 낡아 보이기 때문', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const rec = (age, since) => { const k = kEnv(); k.assignAll(); putH(k, HEALTH(age, { recovering: true, recoverySince: since === undefined ? LOCAL_ISO(K_NOW - 120000) : since })); return k.rc().keeper; };
+  const a = rec(100); eq([a.recovering, a.stale], [true, false], JSON.stringify(a)); ok(/키퍼 복구 중 \(/.test(a.text), a.text);
+  const b = rec(500); eq([b.recovering, b.stale], [true, true], '점검 기록이 500초 낡아도(복구 중 갱신 멈춤) 복구 시작이 2분 전이면 복구 중으로 믿음: ' + JSON.stringify(b)); ok(/복구 중에는 갱신이 늦어짐/.test(b.text), b.text);
+  eq(rec(2000, LOCAL_ISO(K_NOW - 20 * 60000)).recovering, true, '복구가 20분째여도(재시도로 길어진 경우) 믿음');
+  eq(rec(100, LOCAL_ISO(K_NOW - 40 * 60000)).recovering, false, '35분을 넘긴 복구 표시는 키퍼가 비정상 종료해 true 로 남은 것으로 보고 믿지 않음');
+  eq(rec(100, LOCAL_ISO(K_NOW + 3600000)).recovering, false, '미래 시각은 믿지 않음');
+  eq([rec(100, '').recovering, rec(500, '').recovering], [true, false], '시작 시각이 없으면 예전처럼 기록이 낡지 않았을 때만 믿음');
+});
+await check('(K-15) 세션 ID 가 바뀐 경우(/clear·새 대화로 열림): "없음"+"새 창" 오보 대신 추정으로 알리고, 애매하거나 근거가 약하면 추정하지 않는다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  const NEW1 = 'aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb', NEW2 = 'bbbbbbbb-2222-4222-8222-cccccccccccc';
+  const chg = (pairs, o = {}) => { const k = kEnv(o); k.assignAll(); const m = JSON.parse(readFileSync(k.mapFile, 'utf8')); for (const [addr, sid] of pairs) m[addr].sid = sid; writeFileSync(k.mapFile, JSON.stringify(m)); return k; };
+  const k1 = chg([['t100', NEW1]]); const r1 = k1.rc(); const c = stOf(r1, 'commander');
+  eq([c.status, c.address, r1.summary.guess, r1.summary.missing, r1.extras.length], ['guess', 't100', 1, 0, 0], '총지휘 /clear: ' + JSON.stringify(c)); ok(/세션 ID 가 바뀐 것 같습니다/.test(c.note) && c.note.includes('00000100') && c.note.includes('aaaaaaaa') && /role-window-set/.test(c.note), c.note);
+  ok(/추정만 1/.test(r1.headline) && !/미배정 창/.test(r1.headline), r1.headline);
+  const r2 = chg([['t110', NEW1]]).rc(); eq([stOf(r2, 'approval-reviewer').status, stOf(r2, 'approval-reviewer').address, stOf(r2, 'ledger-keeper').status], ['guess', 't110', 'ok'], '창이 4개인 탭에서 1개만 바뀜');
+  const r3 = chg([['t110', NEW1], ['t111', NEW2]]).rc(); eq([r3.summary.guess, r3.summary.missing, r3.extras.length], [0, 2, 2], '같은 탭에서 둘이 바뀌면 어느 창이 누구인지 알 수 없어 추정하지 않음(기존 판정 유지)');
+  const r4 = chg([['t100', NEW1]], { ageSec: 600 }).rc(); eq([r4.summary.guess, r4.summary.unknown], [0, 12], '키퍼 기록이 낡았으면 추정하지 않음(확인 불가)');
+  const r5 = (() => { const k = kEnv({ drop: ['commander'] }); k.assignAll(); return k.rc(); })(); eq([stOf(r5, 'commander').status, r5.summary.guess], ['missing', 0], '창이 정말 없어진 경우는 그대로 없음');
+  const r6 = (() => { const k = kEnv({ drop: ['commander'], extra: [{ n: 190, tab: 'CT-CC-5,6,7,8' }] }); k.assignAll(); return k.rc(); })(); eq([stOf(r6, 'commander').status, r6.summary.guess], ['missing', 0], '다른 탭의 새 창은 후보가 아님');
+  const wl = roleWindowSet(k1.ctx, { id: 'commander', address: 't100', now: K_NOW }); ok(wl.ok, JSON.stringify(wl)); eq([k1.rc().summary.ok, k1.rc().summary.guess], [12, 0], '안내대로 role-window-set 으로 고치면 정상으로 돌아옴');
+});
+const KP = (o = {}) => ({ present: true, stale: false, degraded: false, recovering: false, text: '키퍼 정상 23/23', ...o });
+const RK = (roles, extras, keeper) => ({ ...RES(roles, extras), keeper });
+await check('(K-16) 기록 파일 후보(키퍼 제안): control_dir 에 없을 때만 키퍼 기본 설치 위치를 한 번 더 찾고, 낡음·없음 판정은 그대로다', () => {
+  if (!CSC) return { skip: 'csc.exe 가 없어 가짜 hc 를 만들 수 없음' };
+  // k 의 판정 재료(창·배정)는 그대로 두고, 기록 파일만 "control_dir 은 비어 있고 LOCALAPPDATA 아래 키퍼 기본 위치에 있는" 상황으로 바꾼다. ORCH_SESSION_MAP 은 지운다(지정하면 후보를 찾지 않는 것이 규칙)
+  const mk = (k, { put: putMap, ctrlMap, envMap } = {}) => {
+    const n = ++liveN; const cd = join(BASE, `kcd${n}`); mkdirSync(cd, { recursive: true });
+    const la = join(BASE, `kla${n}`); const app = join(la, 'HerdrSessionKeeper', 'app'); mkdirSync(app, { recursive: true });
+    const j = JSON.parse(read(k.ctx, 'config/orchestration.json')); j.control_dir = cd; put(k.ctx, 'config/orchestration.json', JSON.stringify(j));
+    if (putMap) writeFileSync(join(app, 'session-map.json'), readFileSync(k.mapFile));
+    if (ctrlMap) writeFileSync(join(cd, 'session-map.json'), ctrlMap);
+    const env = { ...k.ctx.env, LOCALAPPDATA: la }; delete env.ORCH_SESSION_MAP; if (envMap) env.ORCH_SESSION_MAP = envMap;
+    const c = makeCtx({ env }); return { app, rc: () => roleCheck(c, { now: K_NOW }) };
+  };
+  const sm = (r) => [r.map.available, r.map.source, r.summary.ok, r.summary.unknown];
+  const k0 = kEnv(); k0.assignAll();
+  eq(sm(mk(k0).rc()), [false, 'control_dir', 0, 12], '어디에도 없으면 옛 동작 그대로: 확인 불가(없음으로 단정하지 않음)');
+  const k1 = kEnv(); k1.assignAll();
+  eq(sm(mk(k1, { put: true }).rc()), [true, 'keeper-default', 12, 0], 'control_dir 에 없고 키퍼 기본 위치에 신선한 기록이 있으면 그것으로 판정');
+  const k2 = kEnv(); k2.assignAll();
+  eq(sm(mk(k2, { put: true, ctrlMap: '{}' }).rc()).slice(0, 2), [true, 'control_dir'], 'control_dir 에 파일이 있으면 그쪽이 먼저(후보로 바꿔치지 않음)');
+  const k3 = kEnv({ ageSec: 600, drop: ['verifier'] }); k3.assignAll();
+  const r3 = mk(k3, { put: true }).rc(); eq([r3.map.source, r3.map.fresh, r3.summary.ok, r3.summary.missing], ['keeper-default', false, 0, 0], '후보의 기록이 낡았으면 믿지 않고, 창이 없어도 "없음"이라 단정하지 않음');
+  const k4 = kEnv(); k4.assignAll();
+  eq(sm(mk(k4, { put: true, envMap: join(BASE, '없는-기록.json') }).rc()), [false, 'env', 0, 12], 'ORCH_SESSION_MAP 을 지정하면 후보를 찾지 않음');
+});
+await check('(K-17) 새 PC 첫 실행: 설정이 없거나 깨졌거나 막 설치한 상태(자리표시자)에서 hc 도 없을 때, 역할 점검은 죽지 않고 이유를 말하며 아무것도 바꾸지 않는다', () => {
+  // hc 는 일부러 없는 경로(HC_BIN)로 지정한다 → 이 PC 의 실제 창을 읽지 않고, "다른 PC·새 환경" 상황을 결정적으로 만든다
+  const fresh = (kind) => {
+    const home = join(BASE, `fresh${++n}`); mkdirSync(join(home, 'config'), { recursive: true });
+    const f = join(home, 'config', 'orchestration.json');
+    if (kind === 'default') writeFileSync(f, JSON.stringify(defaultConfig({ orchHome: home, functionsDir: join(ROOT, 'functions') }), null, 2));
+    if (kind === 'broken') writeFileSync(f, '{ 깨진 설정');
+    const env = { ...process.env, ORCH_HOME: home, HC_BIN: join(BASE, '없는-hc.exe') }; delete env.ORCH_SESSION_MAP;
+    return { home, ctx: makeCtx({ env }) };
+  };
+  const probe = (kind) => { const x = fresh(kind); const before = treeHash(x.home); const r = roleCheck(x.ctx, { now: K_NOW }); eq(treeHash(x.home), before, `${kind}: 점검이 설정 폴더를 바꿈`); return r; };
+  const shape = (r) => [r.ok, r.available, r.roles.length, r.summary];
+  const none = probe('none'); eq(shape(none), [true, false, 0, null], '설정이 없을 때'); ok(/먼저 설치/.test(none.note), '설치 안내가 없음: ' + none.note);
+  const broken = probe('broken'); eq(shape(broken), [true, false, 0, null], '설정이 깨졌을 때(죽지 않아야 함)'); ok(/설정/.test(broken.note), '깨진 설정 안내가 없음: ' + broken.note);
+  const dflt = probe('default'); eq(shape(dflt), [true, false, 0, null], '막 설치한 기본 설정 + hc 없음'); ok(/hc/.test(dflt.note), 'hc 없음 안내가 없음: ' + dflt.note);
+});
+await check('(W-5) 복구 중에는 창 교체·새 창 알림을 묶고, 끝나고 결과가 안정되면 요약 한 줄만 낸다(C)', () => {
+  const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], ['test-dispatcher', '시험 지시', 6, 'ok', 't1yy']];
+  const seq = [RK(W_OK, [], KP()),
+    RK(moved, ['t1n1'], KP({ recovering: true })), RK(moved, ['t1n1', 't1n2'], KP({ recovering: true })), RES(null, [], false), RK(moved, ['t1n1', 't1n2'], KP({ recovering: true })),
+    RK(moved, [], KP()), RK(moved, [], KP()), RK(moved, [], KP()), RK(moved, [], KP())];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT(seq), holdMaxMs: 60000 }); const out = seq.map(() => w.step().lines);
+  eq(out[0].length, 1, '기준선'); eq(out.slice(1, 5), [[], [], [], []], '복구 중(점검 불가가 끼어도 묶음 유지)에는 아무것도 알리지 않음');
+  eq(out[5], [], '복구가 끝난 첫 점검은 아직 알리지 않음(복구 직후 기록 지연을 거름)'); eq(out[6].length, 1, '안정되면 한 줄'); ok(/^세션키퍼 복구가 끝남 — 역할 2개 중 2개 정상$/.test(out[6][0]), out[6][0]);
+  eq([out[7], out[8]], [[], []], '그 뒤로는 같은 상태를 다시 알리지 않음');
+  ok(!out.flat().some((l) => /창 교체|새 창|점검 불가/.test(l)), '묶였어야 할 알림이 샜음: ' + out.flat().join(' | '));
+  const f = makeWatcher({ confirm: 2, check: W_SCRIPT([RK(W_OK, [], KP()), RK(moved, [], KP({ recovering: true })), RK(moved, [], KP()), RK(moved, [], KP({ recovering: true })), RK(moved, [], KP()), RK(moved, [], KP())]), holdMaxMs: 60000 });
+  eq([f.step().lines.length, f.step().lines, f.step().lines, f.step().lines, f.step().lines, f.step().lines.length], [1, [], [], [], [], 1], '복구가 끝났다가 다시 시작하면(깜빡임) 끝날 때까지 기다렸다가 한 번만 알림');
+  const b = makeWatcher({ confirm: 2, check: W_SCRIPT([RK(W_OK, [], KP({ recovering: true }))]), holdMaxMs: 60000 }).step().lines; ok(b.length === 2 && /복구 중이라 .*묶어 두고/.test(b[1]), '처음부터 복구 중이면 기준선에 그 사실을 적음: ' + b.join('|'));
+});
+await check('(W-6) 복구 표시가 끝나지 않아도 상한(기본 15분)이 지나면 묶기를 풀어 알림이 영영 막히지 않게 하고, 키퍼 점검 경고는 한 줄로 알린다', () => {
+  const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], W_OK[1]];
+  let t = 0; const seq = [RK(W_OK, [], KP()), ...Array(6).fill(RK(moved, [], KP({ recovering: true })))];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT(seq), holdMaxMs: 1000, now: () => t });
+  w.step(); const out = []; for (const at of [300, 600, 900, 1500, 2100, 2700]) { t = at; out.push(w.step().lines); }   // 묶기는 첫 복구 표시(300)부터 시작
+  eq([out[0], out[1], out[2]], [[], [], []], '상한 전에는 묶음'); ok(out[3].length === 1 && /복구 표시가 \d+분 넘게 계속되어 알림 묶기를 풀었습니다/.test(out[3][0]), '상한이 지나면 한 번 알림: ' + out[3].join('|'));
+  ok(out.slice(4).flat().some((l) => /3번 검증관: 창 교체 t112 → t1zz/.test(l)), '묶기를 푼 뒤에는 변화를 알림: ' + out.flat().join(' | '));
+  eq(out.flat().filter((l) => /묶기를 풀었습니다/.test(l)).length, 1, '풀었다는 알림은 한 번만');
+  const wr = makeWatcher({ confirm: 1, check: W_SCRIPT([RK(W_OK, [], KP()), RK(W_OK, [], KP({ degraded: true, text: '키퍼 점검 경고 3/23 — 창 23개 중 3개만 인식' })), RK(W_OK, [], KP()), RK(W_OK, [], KP({ degraded: true, text: 'x' })), RK(W_OK, [], { present: true, stale: true, text: '낡음' })]) });
+  wr.step(); eq(wr.step().lines, ['세션키퍼: 키퍼 점검 경고 3/23 — 창 23개 중 3개만 인식'], '경고 시작'); eq(wr.step().lines, ['세션키퍼: 점검 정상으로 돌아옴'], '경고 끝');
+  wr.step(); eq(wr.step().lines, ['세션키퍼: 점검 경고 표시가 사라짐(점검 기록이 없거나 오래됨)'], '기록이 낡아 경고를 더는 모름');
+});
+await check('(W-7) 복구 중에는 키퍼 점검 기록이 낡아 보여도(대량 복구 중 갱신 멈춤) 알림을 계속 묶고, 낡았는데 복구 중이 아니면 키퍼 상태를 알림에 쓰지 않는다', () => {
+  const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], ['test-dispatcher', '시험 지시', 6, 'ok', 't1yy']];
+  const w = makeWatcher({ confirm: 2, check: W_SCRIPT([RK(W_OK, [], KP()), RK(moved, ['t1n1'], KP({ stale: true, recovering: true })), RK(moved, ['t1n1'], KP({ stale: true, recovering: true })), RK(moved, [], KP()), RK(moved, [], KP())]), holdMaxMs: 60000 });
+  const o = [1, 2, 3, 4, 5].map(() => w.step().lines);
+  eq([o[0].length, o[1], o[2], o[3]], [1, [], [], []], '복구 중(기록 낡음)에도 묶음'); ok(o[4].length === 1 && /^세션키퍼 복구가 끝남/.test(o[4][0]), o[4].join('|'));
+  const x = makeWatcher({ confirm: 1, check: W_SCRIPT([RK(W_OK, [], KP()), RK(W_OK, [], KP({ stale: true, degraded: true, text: '낡음' }))]) }); x.step(); eq(x.step().lines, [], '낡았고 복구 중도 아니면 경고로 알리지 않음(그건 map 쪽 점검 불가가 다룸)');
 });
 await check('(N-2) 끝난 뒤: 엔진이 만든 임시 폴더가 남지 않고, 이 PC의 실제 설정은 바이트 동일 (R11)', () => {
   eq(scratchCount(), scratchBefore, '남은 orch-manage-* 임시 폴더');
