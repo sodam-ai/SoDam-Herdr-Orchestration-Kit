@@ -857,6 +857,22 @@ await check('(K-16) 기록 파일 후보(키퍼 제안): control_dir 에 없을 
   const k4 = kEnv(); k4.assignAll();
   eq(sm(mk(k4, { put: true, envMap: join(BASE, '없는-기록.json') }).rc()), [false, 'env', 0, 12], 'ORCH_SESSION_MAP 을 지정하면 후보를 찾지 않음');
 });
+await check('(K-17) 새 PC 첫 실행: 설정이 없거나 깨졌거나 막 설치한 상태(자리표시자)에서 hc 도 없을 때, 역할 점검은 죽지 않고 이유를 말하며 아무것도 바꾸지 않는다', () => {
+  // hc 는 일부러 없는 경로(HC_BIN)로 지정한다 → 이 PC 의 실제 창을 읽지 않고, "다른 PC·새 환경" 상황을 결정적으로 만든다
+  const fresh = (kind) => {
+    const home = join(BASE, `fresh${++n}`); mkdirSync(join(home, 'config'), { recursive: true });
+    const f = join(home, 'config', 'orchestration.json');
+    if (kind === 'default') writeFileSync(f, JSON.stringify(defaultConfig({ orchHome: home, functionsDir: join(ROOT, 'functions') }), null, 2));
+    if (kind === 'broken') writeFileSync(f, '{ 깨진 설정');
+    const env = { ...process.env, ORCH_HOME: home, HC_BIN: join(BASE, '없는-hc.exe') }; delete env.ORCH_SESSION_MAP;
+    return { home, ctx: makeCtx({ env }) };
+  };
+  const probe = (kind) => { const x = fresh(kind); const before = treeHash(x.home); const r = roleCheck(x.ctx, { now: K_NOW }); eq(treeHash(x.home), before, `${kind}: 점검이 설정 폴더를 바꿈`); return r; };
+  const shape = (r) => [r.ok, r.available, r.roles.length, r.summary];
+  const none = probe('none'); eq(shape(none), [true, false, 0, null], '설정이 없을 때'); ok(/먼저 설치/.test(none.note), '설치 안내가 없음: ' + none.note);
+  const broken = probe('broken'); eq(shape(broken), [true, false, 0, null], '설정이 깨졌을 때(죽지 않아야 함)'); ok(/설정/.test(broken.note), '깨진 설정 안내가 없음: ' + broken.note);
+  const dflt = probe('default'); eq(shape(dflt), [true, false, 0, null], '막 설치한 기본 설정 + hc 없음'); ok(/hc/.test(dflt.note), 'hc 없음 안내가 없음: ' + dflt.note);
+});
 await check('(W-5) 복구 중에는 창 교체·새 창 알림을 묶고, 끝나고 결과가 안정되면 요약 한 줄만 낸다(C)', () => {
   const moved = [['verifier', '검증관', 3, 'ok', 't1zz'], ['test-dispatcher', '시험 지시', 6, 'ok', 't1yy']];
   const seq = [RK(W_OK, [], KP()),
