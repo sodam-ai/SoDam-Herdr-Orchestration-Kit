@@ -12,22 +12,22 @@ import { makeCtx, status, roleList, roleSet, roleNew, roleRevert, roleDelete, ex
 const cmd = process.argv[2];
 // 요청 값은 표준입력 또는 --request-file <경로>(허더 모드는 표준입력을 줄 수 없어서 파일로 준다). 파일은 읽기만 하고 지우지 않는다.
 const REQ_MAX = 2 * 1024 * 1024;
+// 읽지 못하면 예외를 던진다. 오류를 요청 값 안의 칸으로 표시하지 않는다(사용자가 같은 이름의 칸을 넣으면 섞이기 때문).
 function readRequest() {
-  try {
-    if (process.argv[3] === '--no-input') return {};   // 입력이 필요 없는 조회: 표준입력을 아예 열지 않는다(허더 모드의 exec 가 입력을 닫아 주는지 알 수 없어서)
-    if (process.argv[3] === '--request-file') {
-      const p = process.argv[4];
-      if (!p) return { __error: '--request-file 뒤에 경로가 없음' };
-      const st = statSync(p);
-      if (!st.isFile()) return { __error: '요청 파일이 일반 파일이 아님' };
-      if (st.size > REQ_MAX) return { __error: '요청 파일이 너무 큼(2 MiB 초과)' };
-      const t = readFileSync(p, 'utf8').replace(/^﻿/, '').trim();
-      return t ? JSON.parse(t) : {};
-    }
-    if (fstatSync(0).isCharacterDevice()) return {};
-    const t = readFileSync(0, 'utf8').replace(/^﻿/, '').trim(); return t ? JSON.parse(t) : {};
-  } catch (e) { return { __error: e.message }; }
+  if (process.argv[3] === '--no-input') return {};   // 입력이 필요 없는 조회: 표준입력을 아예 열지 않는다(허더 모드의 exec 가 입력을 닫아 주는지 알 수 없어서)
+  if (process.argv[3] === '--request-file') {
+    const p = process.argv[4];
+    if (!p) throw new Error('--request-file 뒤에 경로가 없음');
+    const st = statSync(p);
+    if (!st.isFile()) throw new Error('요청 파일이 일반 파일이 아님');
+    if (st.size > REQ_MAX) throw new Error('요청 파일이 너무 큼(2 MiB 초과)');
+    const t = readFileSync(p, 'utf8').replace(/^﻿/, '').trim();
+    return t ? JSON.parse(t) : {};
+  }
+  if (fstatSync(0).isCharacterDevice()) return {};
+  const t = readFileSync(0, 'utf8').replace(/^﻿/, '').trim(); return t ? JSON.parse(t) : {};
 }
+const reject = (msg) => { console.log(JSON.stringify({ ok: false, errors: [msg] })); process.exit(1); };
 const pub = (p) => { if (!p || !p.candidate) return p; const { candidate, ...rest } = p; return rest; };
 const COMMANDS = {
   'status': (c, a) => status(c, { generated: a.generated }),
@@ -46,9 +46,11 @@ const COMMANDS = {
   'sync-run': (c, a) => runSync(c, { out: a.out }),
   'live-windows': (c, a) => liveWindows(c, { scopePrefix: a.scopePrefix }),
 };
-if (!cmd || !COMMANDS[cmd]) { console.error(`사용: node bin/manage.mjs <${Object.keys(COMMANDS).join('|')}>  (요청 값은 표준입력 JSON)`); process.exit(2); }
-const args = readRequest();
-if (args.__error) { console.log(JSON.stringify({ ok: false, errors: [`요청 JSON 을 읽을 수 없음: ${args.__error}`] })); process.exit(1); }
+// 직접 등록한 이름만 명령이다. COMMANDS[cmd] 로만 보면 constructor 같은 물려받은 이름도 "있는 명령"이 되어, 환경 변수가 든 실행 정보가 그대로 출력됐다.
+if (!cmd || !Object.hasOwn(COMMANDS, cmd)) { console.error(`사용: node bin/manage.mjs <${Object.keys(COMMANDS).join('|')}>  (요청 값은 표준입력 JSON)`); process.exit(2); }
+let args;
+try { args = readRequest(); } catch (e) { reject(`요청 JSON 을 읽을 수 없음: ${e.message}`); }
+if (args === null || typeof args !== 'object' || Array.isArray(args)) reject('요청은 JSON 객체여야 함 (null·숫자·글자·배열은 받지 않음)');   // null 은 응답 없이 죽었고, 숫자·배열은 빈 요청처럼 처리됐다
 let result;
 try { result = COMMANDS[cmd](makeCtx(), args); }
 catch (e) { result = { ok: false, errors: [`처리 중 오류: ${e.message}`] }; }
