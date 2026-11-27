@@ -6,7 +6,7 @@ A toolkit for people who run **several AI windows (Claude Code) at once**. It le
 
 > **Current status (please read first)**
 >
-> - Version `0.1.0`. An early version under development.
+> - Version `0.1.1`. An early version under development.
 > - License: **Apache License, Version 2.0** · Rights holder: **SoDam AI Studio**. **Commercial use is allowed** when you meet the conditions. See [Chapter 18](#s18), [`LICENSE`](LICENSE), [`NOTICE`](NOTICE) and [`LEGAL-GUIDE.md`](LEGAL-GUIDE.md) for the conditions and cautions.
 > - **Windows only** (tested on Windows 11 only).
 > - By default this tool **never sends text or keystrokes to any AI window.** The features that do (approval proxy, auto-compact) are **all switched off right after installation.**
@@ -201,7 +201,7 @@ Only the `mods\orch-manager` folder and one line of `keys.json` are touched. Oth
 <a id="s5-3"></a>
 ### Method 3 — Claude Code marketplace plugin (optional)
 
-This repository is a Claude Code marketplace (`.claude-plugin\marketplace.json`), and the plugin is named `herdr-orchestration-manager` (version 0.1.0). The install-helper skill inside the plugin runs Method 1 and Method 2 above **in order**. Running `install.ps1` in the plugin folder directly does the same.
+This repository is a Claude Code marketplace (`.claude-plugin\marketplace.json`), and the plugin is named `herdr-orchestration-manager` (version 0.1.1). The install-helper skill inside the plugin runs Method 1 and Method 2 above **in order**. Running `install.ps1` in the plugin folder directly does the same.
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-orchestration-manager\install.ps1 -Check
@@ -398,7 +398,15 @@ Export scopes: `portable` = my roles + `env-rules.md` + `ignore.txt`; `full` = a
 <a id="s11"></a>
 ## 11. Update summary
 
-The current version is the single version `0.1.0` (the `VERSION` file). Below is a change summary in development order; click an item to expand it. All dates are in 2026.
+The current version is `0.1.1` (the `VERSION` file). Below is a change summary in development order; click an item to expand it. All dates are in 2026.
+
+<details>
+<summary><b>11-27 · 0.1.1 security fix</b></summary>
+
+- The management engine (`bin/manage.mjs`) now accepts only explicitly registered command names. Previously some unregistered names were accepted, and process environment information could appear in the output. If you use 0.1.0, please update.
+- Requests must be JSON objects. A `null` request exited without a response, and numbers or arrays were treated as an empty request.
+
+</details>
 
 <details>
 <summary><b>11-16 · License, preventive security hardening, documentation</b></summary>
@@ -460,7 +468,7 @@ SoDam-Herdr-Orchestration-Kit\
 ├─ LICENSE                         Apache License 2.0 text
 ├─ NOTICE                          Attribution notice (Apache-2.0 manner)
 ├─ LEGAL-GUIDE.md                  Plain guide to the license and rights (Korean and English)
-├─ VERSION                         Version (0.1.0)
+├─ VERSION                         Version (0.1.1)
 ├─ 01_이식-설계서.md               Design document (porting, 3-layer structure, role file format)
 ├─ 02_관리도구-설계서.md           Management tool / engine design and risks R1–R15
 ├─ bin\                            Install and management programs (install.ps1, sync.mjs, manage.mjs, orch-manager.ps1 …)
@@ -862,4 +870,4 @@ To keep this document honest, **everything not yet verified or known to be limit
 
 ---
 
-Document version: for tool `0.1.0` · Korean `README.md`, English `README.en.md`, and the web pages `README.html` and `README.en.html` have the same content (the web pages are generated automatically from the Markdown with `node tools\build-readme.mjs`).
+Document version: for tool `0.1.1` · Korean `README.md`, English `README.en.md`, and the web pages `README.html` and `README.en.html` have the same content (the web pages are generated automatically from the Markdown with `node tools\build-readme.mjs`).

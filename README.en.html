@@ -40,7 +40,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2em 0}
 <blockquote>
 <p><strong>Current status (please read first)</strong></p>
 <ul>
-<li>Version <code>0.1.0</code>. An early version under development.</li>
+<li>Version <code>0.1.1</code>. An early version under development.</li>
 <li>License: <strong>Apache License, Version 2.0</strong> · Rights holder: <strong>SoDam AI Studio</strong>. <strong>Commercial use is allowed</strong> when you meet the conditions. See <a href="#s18">Chapter 18</a>, <a href="LICENSE"><code>LICENSE</code></a>, <a href="NOTICE"><code>NOTICE</code></a> and <a href="LEGAL-GUIDE.md"><code>LEGAL-GUIDE.md</code></a> for the conditions and cautions.</li>
 <li><strong>Windows only</strong> (tested on Windows 11 only).</li>
 <li>By default this tool <strong>never sends text or keystrokes to any AI window.</strong> The features that do (approval proxy, auto-compact) are <strong>all switched off right after installation.</strong></li>
@@ -209,7 +209,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2em 0}
 </table></div>
 <a id="s5-3"></a>
 <h3>Method 3 — Claude Code marketplace plugin (optional)</h3>
-<p>This repository is a Claude Code marketplace (<code>.claude-plugin\marketplace.json</code>), and the plugin is named <code>herdr-orchestration-manager</code> (version 0.1.0). The install-helper skill inside the plugin runs Method 1 and Method 2 above <strong>in order</strong>. Running <code>install.ps1</code> in the plugin folder directly does the same.</p>
+<p>This repository is a Claude Code marketplace (<code>.claude-plugin\marketplace.json</code>), and the plugin is named <code>herdr-orchestration-manager</code> (version 0.1.1). The install-helper skill inside the plugin runs Method 1 and Method 2 above <strong>in order</strong>. Running <code>install.ps1</code> in the plugin folder directly does the same.</p>
 <pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-orchestration-manager\install.ps1 -Check</code></pre>
 <blockquote>
 <p>Installing remotely through a marketplace address could <strong>not be run and confirmed</strong> while writing this document. The whole folder-based install flow of the plugin was confirmed by the automated test (<code>tests\plugin.test.mjs</code>).</p>
@@ -400,7 +400,14 @@ hr{border:0;border-top:1px solid var(--line);margin:2em 0}
 </table></div>
 <a id="s11"></a>
 <h2>11. Update summary</h2>
-<p>The current version is the single version <code>0.1.0</code> (the <code>VERSION</code> file). Below is a change summary in development order; click an item to expand it. All dates are in 2026.</p>
+<p>The current version is <code>0.1.1</code> (the <code>VERSION</code> file). Below is a change summary in development order; click an item to expand it. All dates are in 2026.</p>
+<details>
+<summary><b>11-27 · 0.1.1 security fix</b></summary>
+<ul>
+<li>The management engine (<code>bin/manage.mjs</code>) now accepts only explicitly registered command names. Previously some unregistered names were accepted, and process environment information could appear in the output. If you use 0.1.0, please update.</li>
+<li>Requests must be JSON objects. A <code>null</code> request exited without a response, and numbers or arrays were treated as an empty request.</li>
+</ul>
+</details>
 <details>
 <summary><b>11-16 · License, preventive security hardening, documentation</b></summary>
 <ul>
@@ -454,7 +461,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2em 0}
 ├─ LICENSE                         Apache License 2.0 text
 ├─ NOTICE                          Attribution notice (Apache-2.0 manner)
 ├─ LEGAL-GUIDE.md                  Plain guide to the license and rights (Korean and English)
-├─ VERSION                         Version (0.1.0)
+├─ VERSION                         Version (0.1.1)
 ├─ 01_이식-설계서.md               Design document (porting, 3-layer structure, role file format)
 ├─ 02_관리도구-설계서.md           Management tool / engine design and risks R1–R15
 ├─ bin\                            Install and management programs (install.ps1, sync.mjs, manage.mjs, orch-manager.ps1 …)
@@ -801,7 +808,7 @@ bash tests/label-isolation.test.sh</code></pre>
 </tbody>
 </table></div>
 <hr>
-<p>Document version: for tool <code>0.1.0</code> · Korean <code>README.md</code>, English <code>README.en.md</code>, and the web pages <code>README.html</code> and <code>README.en.html</code> have the same content (the web pages are generated automatically from the Markdown with <code>node tools\build-readme.mjs</code>).</p>
+<p>Document version: for tool <code>0.1.1</code> · Korean <code>README.md</code>, English <code>README.en.md</code>, and the web pages <code>README.html</code> and <code>README.en.html</code> have the same content (the web pages are generated automatically from the Markdown with <code>node tools\build-readme.mjs</code>).</p>
 </main>
 </body>
 </html>

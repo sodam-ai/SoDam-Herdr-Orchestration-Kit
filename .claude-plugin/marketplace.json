@@ -11,7 +11,7 @@
       "name": "herdr-orchestration-manager",
       "source": "./plugins/herdr-orchestration-manager",
       "description": "Herdr 오케스트레이션 관리: 역할 편집·내보내기/불러오기·백업/복구를 허더 안의 창(모드)과 별도 Windows 창에서 안전하게 하는 도구 (Windows)",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "productivity",
       "license": "Apache-2.0"
     }

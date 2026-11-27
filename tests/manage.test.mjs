@@ -481,6 +481,31 @@ await check('(C-2) CLI 전체 흐름: 내보내기 → 다른 홈에서 불러�
   const rp = cli('restore-plan', { pkg: bk.json.dir }, b.paths.home); ok(rp.code === 0 && !rp.json.noop, rp.out.slice(0, 200));
   const ra = cli('restore-apply', { pkg: bk.json.dir, token: rp.json.token }, b.paths.home); ok(ra.code === 0, ra.out.slice(0, 200));
 });
+// 명령 이름·요청 값의 모양 검사. ⚠ 여기서는 실제 환경 변수를 넘기지 않고 가짜 표식만 넘기며, 실패 안내에도 출력 원문을 싣지 않는다(결함이 있으면 환경 값이 출력되기 때문).
+const bare = (cmd, input, home) => spawnSync(process.execPath, [join(ROOT, 'bin', 'manage.mjs'), cmd], { input, encoding: 'utf8', env: { SystemRoot: process.env.SystemRoot, ORCH_HOME: home, FAKE_MARKER: 'marker-only-for-test' } });
+await check('(C-6) 명령은 직접 등록한 이름만: constructor 같은 물려받은 이름은 사용법 오류(2)이고, 아무것도 출력하지 않는다(환경 값 노출 방지)', () => {
+  const ctx = mkHome({ seed: true }); const h = ctx.paths.home;
+  const leaked = [];
+  for (const c of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'toLocaleString', 'propertyIsEnumerable', '__proto__', '__defineGetter__', '__lookupGetter__']) {
+    const r = bare(c, '{}', h);
+    if (r.status !== 2 || r.stdout !== '' || `${r.stdout}${r.stderr}`.includes('marker-only-for-test')) leaked.push(`${c}(exit=${r.status}, 표준출력 ${r.stdout.length}자, 표식노출=${`${r.stdout}${r.stderr}`.includes('marker-only-for-test')})`);
+  }
+  ok(!leaked.length, `거절하지 않은 이름: ${leaked.join(' · ')}`);
+});
+await check('(C-7) 요청 값은 JSON 객체만: null·숫자·글자·배열·참거짓은 JSON 으로 거절(1)하고, 내부 표시와 같은 이름의 칸을 넣어도 죽지 않는다', () => {
+  const ctx = mkHome({ seed: true }); const h = ctx.paths.home;
+  const bad = [];
+  for (const body of ['null', '5', '"x"', '[1]', '[]', 'true']) {
+    for (const [how, r] of [['표준입력', cli('status', body, h)], ['요청 파일', cliFile('status', body, h)]]) {
+      if (!(r.code === 1 && r.json && r.json.ok === false && /JSON 객체/.test(r.json.errors[0]) && !/\n\s+at /.test(r.out))) bad.push(`${body}/${how}(exit=${r.code}, json=${!!r.json})`);
+    }
+  }
+  for (const body of ['{"__error":{"toString":null}}', '{"__error":"가짜 오류"}']) {
+    const r = cli('status', body, h);
+    if (!(r.code === 0 && r.json && r.json.ok === true && !/\n\s+at /.test(r.out))) bad.push(`${body}(exit=${r.code}, json=${!!r.json})`);
+  }
+  ok(!bad.length, bad.join(' · '));
+});
 // 허더 모드는 exec 에 표준입력을 줄 수 없어서 요청 값을 파일로 준다(--request-file). 같은 요청이면 표준입력과 결과가 같아야 한다.
 function cliFile(cmd, reqText, home, { stdin = '' } = {}) {
   const f = join(BASE, `req-${Math.random().toString(36).slice(2)}.json`);
