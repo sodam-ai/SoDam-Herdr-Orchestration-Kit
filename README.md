@@ -6,7 +6,7 @@
 
 > **현재 상태 (먼저 읽어 주세요)**
 >
-> - 버전 `0.1.0`. 개발 중인 초기 버전입니다.
+> - 버전 `0.1.1`. 개발 중인 초기 버전입니다.
 > - 라이선스: **Apache License, Version 2.0** · 권리자: **SoDam AI Studio**. 조건을 지키면 **상업적 사용도 가능**합니다. 조건과 주의점은 [18장](#s18)과 [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), [`LEGAL-GUIDE.md`](LEGAL-GUIDE.md) 를 보세요.
 > - **Windows 전용**입니다(Windows 11에서만 시험했습니다).
 > - 이 도구는 기본으로 **어느 AI 창에도 글자나 키를 보내지 않습니다.** 보내는 기능(승인 대행, 자동 압축)은 설치 직후 **모두 꺼져 있습니다.**
@@ -200,7 +200,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File bin\install-herdr-mod.ps1
 <a id="s5-3"></a>
 ### 방법 3 — Claude Code 마켓플레이스 플러그인 (선택)
 
-이 저장소는 Claude Code 마켓플레이스(`.claude-plugin\marketplace.json`)이고, 플러그인 이름은 `herdr-orchestration-manager`(버전 0.1.0) 입니다. 플러그인 안의 설치 도우미 스킬이 위 방법 1과 방법 2를 **순서대로** 실행해 줍니다. 플러그인 폴더의 `install.ps1` 을 직접 실행해도 같습니다.
+이 저장소는 Claude Code 마켓플레이스(`.claude-plugin\marketplace.json`)이고, 플러그인 이름은 `herdr-orchestration-manager`(버전 0.1.1) 입니다. 플러그인 안의 설치 도우미 스킬이 위 방법 1과 방법 2를 **순서대로** 실행해 줍니다. 플러그인 폴더의 `install.ps1` 을 직접 실행해도 같습니다.
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-orchestration-manager\install.ps1 -Check
@@ -397,7 +397,15 @@ AI 창을 조회·보조하는 스크립트 5종입니다. **위험도가 높은
 <a id="s11"></a>
 ## 11. 업데이트 내용 요약
 
-현재 버전은 `0.1.0` 하나입니다(`VERSION` 파일). 아래는 개발 순서대로 정리한 변경 요약이며, 항목을 눌러 펼쳐 보세요. 날짜는 모두 2026년입니다.
+현재 버전은 `0.1.1` 입니다(`VERSION` 파일). 아래는 개발 순서대로 정리한 변경 요약이며, 항목을 눌러 펼쳐 보세요. 날짜는 모두 2026년입니다.
+
+<details>
+<summary><b>11-27 · 0.1.1 보안 수정</b></summary>
+
+- 관리 엔진(`bin/manage.mjs`)이 직접 등록한 명령 이름만 받습니다. 이전에는 등록하지 않은 일부 이름도 받아들여, 실행 환경 정보가 결과에 출력될 수 있었습니다. 0.1.0 을 쓰고 있다면 업데이트하세요.
+- 요청은 JSON 객체만 받습니다. `null` 요청은 응답 없이 종료됐고, 숫자·배열은 빈 요청처럼 처리됐습니다.
+
+</details>
 
 <details>
 <summary><b>11-16 · 라이선스, 보안 예방 보강, 문서</b></summary>
@@ -459,7 +467,7 @@ SoDam-Herdr-Orchestration-Kit\
 ├─ LICENSE                         Apache License 2.0 본문
 ├─ NOTICE                          귀속 고지(Apache-2.0 방식)
 ├─ LEGAL-GUIDE.md                  라이선스·권리 쉬운 안내(한국어·영어)
-├─ VERSION                         버전(0.1.0)
+├─ VERSION                         버전(0.1.1)
 ├─ 01_이식-설계서.md               설계서(이식·3겹 구조·역할 파일 형식)
 ├─ 02_관리도구-설계서.md           관리 도구·엔진 설계와 위험 R1~R15
 ├─ bin\                            설치·관리 프로그램 (install.ps1, sync.mjs, manage.mjs, orch-manager.ps1 …)
@@ -860,4 +868,4 @@ bash tests/label-isolation.test.sh
 
 ---
 
-문서 버전: 도구 `0.1.0` 기준 · 한국어 `README.md` 와 영어 `README.en.md`, 웹 문서 `README.html`·`README.en.html` 은 같은 내용입니다(웹 문서는 `node tools\build-readme.mjs` 로 마크다운에서 자동 생성합니다).
+문서 버전: 도구 `0.1.1` 기준 · 한국어 `README.md` 와 영어 `README.en.md`, 웹 문서 `README.html`·`README.en.html` 은 같은 내용입니다(웹 문서는 `node tools\build-readme.mjs` 로 마크다운에서 자동 생성합니다).

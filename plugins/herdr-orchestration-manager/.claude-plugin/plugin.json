@@ -1,6 +1,6 @@
 {
   "name": "herdr-orchestration-manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Herdr 오케스트레이션 관리 설치 도우미: 역할 편집·내보내기/불러오기·백업/복구를 하는 허더 안의 관리 창(모드)과 엔진 (Windows 전용). 스킬 herdr-orchestration-manager 가 설치·점검·제거를 안내합니다.",
   "license": "Apache-2.0",
   "author": {
